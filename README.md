@@ -75,7 +75,7 @@ Für Spieler hinter strikten NATs wird ggf. ein TURN-Server benötigt:
 ICE_SERVERS='[{"urls":"stun:stun.l.google.com:19302"},{"urls":"turn:turn.example.com:3478","username":"u","credential":"p"}]' npm start
 ```
 
-Weitere Umgebungsvariablen: `PORT` (Standard 3000, im Docker-Image 5000).
+Weitere Umgebungsvariablen: `PORT` (Standard 3000, auch im Docker-Image).
 
 ## Deployment mit Dokku
 
@@ -84,7 +84,8 @@ Das Repo enthält ein `Dockerfile`; Dokku baut damit automatisch. Auf dem Server
 ```bash
 dokku apps:create looping-larry
 dokku domains:set looping-larry larry.example.com
-dokku ports:set looping-larry http:80:5000
+dokku ports:set looping-larry http:80:3000
+dokku config:set looping-larry PORT=3000   # App-Port und Mapping fest übereinander
 # HTTPS ist Pflicht für Kamera/Mikro:
 dokku letsencrypt:set looping-larry email du@example.com
 dokku letsencrypt:enable looping-larry
@@ -108,7 +109,7 @@ Hinweise:
 - Bei einem Redeploy werden laufende Runden beendet; die Clients laden automatisch neu.
 - Healthcheck: `GET /health` (in `app.json` und im Docker-`HEALTHCHECK`).
 
-Lokal testen: `docker build -t looping-larry . && docker run --rm -p 3000:5000 looping-larry`
+Lokal testen: `docker build -t looping-larry . && docker run --rm -p 3000:3000 looping-larry`
 
 ## Entwicklung
 
