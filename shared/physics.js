@@ -62,7 +62,7 @@ export const PADDLE_COOLDOWN = 0.42;
 
 // Charging: holding the button winds up the lever. Releasing fires it with a
 // power of (held time / CHARGE_MAX); at CHARGE_MAX it fires on its own.
-export const CHARGE_MAX = 1.0; // seconds for a full charge
+export const CHARGE_MAX = 0.5; // seconds for a full charge
 
 // Kick strength (rad/s of arm elevation speed) grows with the charge. Normal
 // hits stay below the looping threshold (~4.1). A full charge that also hits
