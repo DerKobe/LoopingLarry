@@ -1,11 +1,11 @@
-// A game room: seats, bots, authoritative simulation with rollback lag compensation,
-// and WebRTC signalling relay.
+// The farm: players, seats (2-5 stations), spectators, bots, authoritative
+// simulation with rollback lag compensation, and WebRTC signalling relay.
 import * as P from '../shared/physics.js';
 
 const MAX_REWIND = 0.25; // seconds a lever press may be applied in the past
 const SNAPSHOT_INTERVAL = 1 / 30;
 const END_CONFIRM = MAX_REWIND + 0.05;
-const MAX_HUMANS = 4;
+const MAX_CLIENTS = 8; // players + spectators
 
 const BOT_NAMES = ['Bot Berta', 'Bot Bruno', 'Bot Hilde', 'Bot Kurt', 'Bot Frieda', 'Bot Otto'];
 
@@ -14,11 +14,11 @@ export function serverNow() {
 }
 
 export class Room {
-  constructor(id, onEmpty) {
+  constructor(id, onEmpty = () => {}) {
     this.id = id;
     this.onEmpty = onEmpty;
-    this.clients = new Map(); // id -> { id, ws, name, seat, media, score }
-    this.bots = new Map(); // seat -> { name, skill, plan }
+    this.clients = new Map(); // id -> { id, ws, name, seat (-1 = spectator), media, score }
+    this.bots = new Map(); // seat -> { name, skill, plan, score }
     this.hostId = null;
     this.state = P.createState(serverNow());
     this.history = []; // states after each tick, newest last
@@ -36,25 +36,27 @@ export class Room {
     clearTimeout(this.phaseTimer);
   }
 
+  inLobby() {
+    return this.state.phase === 'lobby' || this.state.phase === 'ended';
+  }
+
   // ---------------------------------------------------------------- clients
 
   addClient(ws, id, name) {
-    const humans = this.clients.size;
-    if (humans >= MAX_HUMANS) return { error: 'Der Raum ist voll (max. 4 Spieler).' };
-    let seat = this.freeSeat();
-    if (seat === -1 && this.state.phase === 'lobby') {
-      // replace a bot
-      const botSeat = [...this.bots.keys()].pop();
-      if (botSeat !== undefined) {
-        this.bots.delete(botSeat);
-        seat = botSeat;
-      }
-    }
-    if (seat === -1) return { error: 'Kein freier Platz – versuch es nach der Runde nochmal.' };
-    const client = { id, ws, name, seat, media: { mic: false, cam: false }, score: 0 };
+    if (this.clients.size >= MAX_CLIENTS) return { error: 'Der Hof ist voll.' };
+    const client = { id, ws, name, seat: -1, media: { mic: false, cam: false }, score: 0 };
     this.clients.set(id, client);
     if (!this.hostId) this.hostId = id;
-    this.occupySeat(seat);
+    if (this.inLobby()) this.reseat();
+    else {
+      // mid-round: take a free station if there is one, but only play from the next round
+      const seat = this.freeSeat();
+      if (seat !== -1) {
+        client.seat = seat;
+        this.state.seats[seat].occ = true;
+        this.history = [];
+      }
+    }
     return { client };
   }
 
@@ -62,19 +64,35 @@ export class Room {
     const c = this.clients.get(id);
     if (!c) return;
     this.clients.delete(id);
-    this.vacateSeat(c.seat);
+    if (c.seat >= 0) this.vacateSeat(c.seat);
     if (this.hostId === id) this.hostId = this.clients.size ? this.clients.keys().next().value : null;
     this.broadcast({ t: 'peer-left', id });
     if (this.clients.size === 0) {
+      this.reset();
       this.onEmpty(this);
       return;
     }
+    if (this.inLobby()) this.reseat();
     this.checkRoundAfterLeave();
     this.sendLobby();
   }
 
+  // Everybody left: back to a clean farm (the chosen number of stations stays).
+  reset() {
+    clearTimeout(this.phaseTimer);
+    this.bots.clear();
+    this.state.phase = 'lobby';
+    for (const seat of this.state.seats) {
+      seat.occ = false;
+      seat.active = false;
+      seat.chickens = 0;
+    }
+    this.winner = null;
+    this.resetHistory();
+  }
+
   freeSeat() {
-    for (let i = 0; i < P.NUM_SEATS; i++) {
+    for (let i = 0; i < this.state.n; i++) {
       if (!this.seatTaken(i)) return i;
     }
     return -1;
@@ -86,16 +104,6 @@ export class Room {
     return false;
   }
 
-  occupySeat(seat) {
-    const s = this.state.seats[seat];
-    s.occ = true;
-    if (this.state.phase === 'lobby' || this.state.phase === 'ended') {
-      s.chickens = P.START_CHICKENS;
-      s.active = false;
-    }
-    this.history = [];
-  }
-
   vacateSeat(seat) {
     const s = this.state.seats[seat];
     s.occ = false;
@@ -104,27 +112,67 @@ export class Room {
     this.history = [];
   }
 
+  // (Re)assign stations in the lobby: humans keep their seat if it still exists,
+  // then fill free seats in join order, replacing bots if needed. The rest watch.
+  reseat() {
+    const n = this.state.n;
+    for (const seat of [...this.bots.keys()]) if (seat >= n) this.bots.delete(seat);
+    for (const c of this.clients.values()) if (c.seat >= n) c.seat = -1;
+    for (const c of this.clients.values()) {
+      if (c.seat >= 0) continue;
+      let seat = this.freeSeat();
+      if (seat === -1 && this.bots.size) {
+        seat = Math.max(...this.bots.keys());
+        this.bots.delete(seat);
+      }
+      if (seat === -1) break;
+      c.seat = seat;
+    }
+    for (let i = 0; i < P.MAX_SEATS; i++) {
+      const st = this.state.seats[i];
+      st.occ = i < n && this.seatTaken(i);
+      st.active = false;
+      st.chickens = st.occ ? P.START_CHICKENS : 0;
+    }
+    this.resetHistory();
+  }
+
+  setSeatCount(n) {
+    if (!this.inLobby()) return;
+    n = Math.max(P.MIN_SEATS, Math.min(P.MAX_SEATS, Math.round(n)));
+    if (!Number.isFinite(n) || n === this.state.n) return;
+    clearTimeout(this.phaseTimer);
+    this.state.phase = 'lobby';
+    this.state.n = n;
+    this.reseat();
+    this.sendLobby();
+    this.broadcastSnapshot();
+  }
+
   addBot() {
-    if (this.state.phase !== 'lobby' && this.state.phase !== 'ended') return;
+    if (!this.inLobby()) return;
     const seat = this.freeSeat();
     if (seat === -1) return;
     const used = new Set([...this.bots.values()].map((b) => b.name));
     const name = BOT_NAMES.find((n) => !used.has(n)) || 'Bot';
     this.bots.set(seat, { name, skill: 0.55 + Math.random() * 0.35, plan: null, score: 0 });
-    this.occupySeat(seat);
+    this.reseat();
     this.sendLobby();
+    this.broadcastSnapshot();
   }
 
   removeBot(seat) {
-    if (!this.bots.has(seat)) return;
-    if (this.state.phase === 'countdown' || this.state.phase === 'playing') return;
+    if (!this.bots.has(seat) || !this.inLobby()) return;
     this.bots.delete(seat);
-    this.vacateSeat(seat);
+    this.reseat();
     this.sendLobby();
+    this.broadcastSnapshot();
   }
 
-  participants() {
-    return this.clients.size + this.bots.size;
+  seatedCount() {
+    let n = this.bots.size;
+    for (const c of this.clients.values()) if (c.seat >= 0) n++;
+    return n;
   }
 
   lobbyInfo() {
@@ -135,8 +183,8 @@ export class Room {
     for (const [seat, b] of this.bots) {
       players.push({ id: 'bot-' + seat, name: b.name, seat, bot: true, media: { mic: false, cam: false }, score: b.score });
     }
-    players.sort((a, b) => a.seat - b.seat);
-    return { t: 'lobby', room: this.id, hostId: this.hostId, players, phase: this.state.phase, winner: this.winner };
+    players.sort((a, b) => (a.seat < 0 ? 99 : a.seat) - (b.seat < 0 ? 99 : b.seat));
+    return { t: 'lobby', hostId: this.hostId, n: this.state.n, players, phase: this.state.phase, winner: this.winner };
   }
 
   sendLobby() {
@@ -146,18 +194,22 @@ export class Room {
   // ---------------------------------------------------------------- messages
 
   handle(client, msg) {
+    const isHost = client.id === this.hostId;
     switch (msg.t) {
       case 'flip':
-        this.onFlip(client.seat, Number(msg.st));
+        if (client.seat >= 0) this.onFlip(client.seat, Number(msg.st));
         break;
       case 'start':
-        if (client.id === this.hostId) this.startRound();
+        if (isHost) this.startRound();
+        break;
+      case 'seats':
+        if (isHost) this.setSeatCount(Number(msg.n));
         break;
       case 'addBot':
-        if (client.id === this.hostId) this.addBot();
+        if (isHost) this.addBot();
         break;
       case 'removeBot':
-        if (client.id === this.hostId) this.removeBot(Number(msg.seat));
+        if (isHost) this.removeBot(Number(msg.seat));
         break;
       case 'media':
         client.media = { mic: !!msg.mic, cam: !!msg.cam };
@@ -170,7 +222,7 @@ export class Room {
       }
       case 'emote': {
         const e = String(msg.e || '').slice(0, 8);
-        this.broadcast({ t: 'emote', seat: client.seat, e });
+        this.broadcast({ t: 'emote', id: client.id, e });
         break;
       }
     }
@@ -179,10 +231,10 @@ export class Room {
   // ---------------------------------------------------------------- rounds
 
   startRound() {
-    const ph = this.state.phase;
-    if (ph !== 'lobby' && ph !== 'ended') return;
-    if (this.participants() < 2) return;
+    if (!this.inLobby()) return;
+    if (this.seatedCount() < this.state.n) return; // all stations need a pilot
     clearTimeout(this.phaseTimer);
+    this.reseat();
     const s = this.state;
     s.roundId++;
     s.phase = 'countdown';
@@ -190,7 +242,7 @@ export class Room {
     s.omega0 = P.OMEGA_START * (0.95 + Math.random() * 0.1);
     s.loops = 0;
     s.lastHit = null;
-    for (let i = 0; i < P.NUM_SEATS; i++) {
+    for (let i = 0; i < P.MAX_SEATS; i++) {
       const seat = s.seats[i];
       seat.active = seat.occ;
       seat.chickens = seat.occ ? P.START_CHICKENS : 0;
@@ -231,11 +283,7 @@ export class Room {
     this.phaseTimer = setTimeout(() => {
       if (this.state.phase === 'ended') {
         this.state.phase = 'lobby';
-        for (const seat of this.state.seats) {
-          seat.active = false;
-          seat.chickens = seat.occ ? P.START_CHICKENS : 0;
-        }
-        this.resetHistory();
+        this.reseat(); // spectators take free stations now
         this.sendLobby();
         this.broadcastSnapshot();
       }
@@ -361,7 +409,7 @@ export class Room {
       if (!me.active || me.chickens <= 0) continue;
       if (bot.plan && s.t > bot.plan.until) bot.plan = null;
       if (bot.plan) continue;
-      const d = P.wrapAngle(s.theta - P.paddleAngle(seat));
+      const d = P.wrapAngle(s.theta - P.paddleAngle(seat, s.n));
       if (d < -0.95 || d > -0.12) continue;
       // Look ahead: how high is the plane at my lever, and will it dive onto my chickens?
       const sim = P.cloneState(s);
@@ -370,14 +418,14 @@ export class Room {
       let hMin = Infinity;
       for (let i = 0; i < 160; i++) {
         P.step(sim, null);
-        const dd = P.wrapAngle(sim.theta - P.paddleAngle(seat));
+        const dd = P.wrapAngle(sim.theta - P.paddleAngle(seat, s.n));
         const h = P.planePose(sim).h;
         if (arrive === null && dd >= 0 && dd < 0.5) {
           arrive = sim.t;
           hLever = h;
         }
         if (dd > -P.PADDLE_HALF_WIDTH && dd < 0.6) hMin = Math.min(hMin, h);
-        if (arrive !== null && P.wrapAngle(sim.theta - P.chickenAngle(seat)) > 0) break;
+        if (arrive !== null && P.wrapAngle(sim.theta - P.chickenAngle(seat, s.n)) > 0) break;
       }
       // re-evaluate a few times per approach – another player may kick the plane meanwhile
       if (arrive === null) {

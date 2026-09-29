@@ -2,9 +2,9 @@
 import * as THREE from 'three';
 import * as P from '/shared/physics.js';
 
-export const SEAT_COLORS = [0xe63946, 0xffb703, 0x2a9d8f, 0x8e44ad];
-export const SEAT_CSS = ['#e63946', '#ffb703', '#2a9d8f', '#8e44ad'];
-export const SEAT_NAMES = ['Rot', 'Gelb', 'Grün', 'Lila'];
+export const SEAT_COLORS = [0xe63946, 0xffb703, 0x2a9d8f, 0x8e44ad, 0x2f80ed];
+export const SEAT_CSS = ['#e63946', '#ffb703', '#2a9d8f', '#8e44ad', '#2f80ed'];
+export const SEAT_NAMES = ['Rot', 'Gelb', 'Grün', 'Lila', 'Blau'];
 
 const matCache = new Map();
 export function mat(color, opts = {}) {

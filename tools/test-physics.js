@@ -3,17 +3,19 @@ import * as P from '../shared/physics.js';
 import { Room } from '../server/room.js';
 
 const ROUNDS = Number(process.argv[2] ?? 30);
+const SEATS = Number(process.argv[3] ?? 4);
 let totalTime = 0;
 let totalLoops = 0;
 let totalHits = 0;
 let totalKnocks = 0;
-const wins = [0, 0, 0, 0];
+const wins = new Array(SEATS).fill(0);
 
 for (let r = 0; r < ROUNDS; r++) {
   const room = new Room('TEST', () => {});
   room.destroy(); // stop the real-time loop, we tick manually
   room.broadcast = () => {};
-  for (let i = 0; i < 4; i++) room.addBot();
+  room.setSeatCount(SEATS);
+  for (let i = 0; i < SEATS; i++) room.addBot();
   room.startRound();
   const s0 = room.state;
   let hitKey = '';
@@ -41,5 +43,5 @@ for (let r = 0; r < ROUNDS; r++) {
   console.log(`round ${r + 1}: ${dur.toFixed(1)}s, loops ${s.loops}, winner seat ${alive[0]}  (skills ${skills})`);
 }
 console.log(
-  `\navg round ${(totalTime / ROUNDS).toFixed(1)}s, loops/round ${(totalLoops / ROUNDS).toFixed(1)}, hits/round ${(totalHits / ROUNDS).toFixed(1)}, knocks/round ${(totalKnocks / ROUNDS).toFixed(1)}, wins ${wins}`
+  `\n${SEATS} Spieler: avg round ${(totalTime / ROUNDS).toFixed(1)}s, loops/round ${(totalLoops / ROUNDS).toFixed(1)}, hits/round ${(totalHits / ROUNDS).toFixed(1)}, knocks/round ${(totalKnocks / ROUNDS).toFixed(1)}, wins ${wins}`
 );

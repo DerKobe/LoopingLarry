@@ -39,11 +39,8 @@
             <label>Dein Name
               <input id="in-name" maxlength="16" placeholder="z.B. Anna" required />
             </label>
-            <label>Raumcode
-              <input id="in-room" maxlength="8" placeholder="z.B. HUHN42" />
-            </label>
             <button type="submit" class="btn primary big" id="btn-join">Losfliegen ✈️</button>
-            <p class="small">Ohne Code wird ein neuer Raum erstellt. Teile danach einfach den Link.</p>
+            <p class="small">Alle, die diese Seite öffnen, landen auf demselben Hof.</p>
             <p id="join-error" class="error"></p>
           </form>
         </div>
@@ -58,17 +55,22 @@
     <!-- In-game HUD -->
     <div id="hud" class="hidden">
       <div id="tiles"></div>
+      <div id="spectators"></div>
 
       <div id="topbar">
-        <div class="room-chip">Raum <b id="room-code">----</b>
-          <button id="btn-copy" class="chip-btn" title="Einladungslink kopieren">🔗 Link kopieren</button>
-        </div>
         <div id="net-info" class="net-info"></div>
       </div>
 
       <div id="lobby-panel" class="panel">
         <h2 id="lobby-title">Warte auf Spieler …</h2>
+        <div class="seat-count-row">
+          <span>Spieler:</span>
+          <div id="seat-count" class="segmented">
+            <button data-n="2">2</button><button data-n="3">3</button><button data-n="4">4</button><button data-n="5">5</button>
+          </div>
+        </div>
         <ul id="lobby-players"></ul>
+        <p id="lobby-spectators" class="small hidden"></p>
         <div class="lobby-actions">
           <button id="btn-bot" class="btn secondary">🤖 Bot hinzufügen</button>
           <button id="btn-start" class="btn primary">Runde starten</button>

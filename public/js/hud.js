@@ -3,12 +3,23 @@ import { SEAT_CSS } from './models.js';
 import * as P from '/shared/physics.js';
 
 const $ = (sel) => document.querySelector(sel);
-const POS = ['self', 'left', 'top', 'right'];
+const SPECTATOR_CSS = '#8d99ae';
+
+// Where the other stations appear from my point of view (seat + k, k = 1..n-1).
+// The camera sits behind my own station, so seat + 1 is on the left.
+const LAYOUTS = {
+  2: ['top'],
+  3: ['left', 'right'],
+  4: ['left', 'top', 'right'],
+  5: ['left', 'topleft', 'topright', 'right'],
+};
+const POSITIONS = ['self', 'left', 'top', 'right', 'topleft', 'topright', 'spec'];
 
 export class Hud {
   constructor() {
-    this.tiles = new Map(); // seat -> { el, video, avatar, ... }
+    this.tiles = new Map(); // playerId -> { el, video, avatar, seat, ... }
     this.players = [];
+    this.n = P.DEFAULT_SEATS;
     this.mySeat = -1;
     this.myId = null;
     this.streams = new Map(); // playerId -> MediaStream
@@ -23,34 +34,37 @@ export class Hud {
 
   // ---------------------------------------------------------------- tiles
 
-  setPlayers(players, myId) {
+  setPlayers(players, myId, n) {
     this.players = players;
     this.myId = myId;
+    this.n = n;
     const me = players.find((p) => p.id === myId);
     this.mySeat = me ? me.seat : -1;
-    const seen = new Set();
     for (const p of players) {
-      seen.add(p.seat);
-      let tile = this.tiles.get(p.seat);
-      if (!tile || tile.playerId !== p.id) {
-        if (tile) tile.el.remove();
+      let tile = this.tiles.get(p.id);
+      if (!tile) {
         tile = this.createTile(p);
-        this.tiles.set(p.seat, tile);
+        this.tiles.set(p.id, tile);
       }
       this.updateTile(tile, p);
     }
-    for (const [seat, tile] of this.tiles) {
-      if (!seen.has(seat)) {
+    const ids = new Set(players.map((p) => p.id));
+    for (const [id, tile] of this.tiles) {
+      if (!ids.has(id)) {
         tile.el.remove();
-        this.tiles.delete(seat);
+        this.tiles.delete(id);
       }
     }
+  }
+
+  tileBySeat(seat) {
+    for (const tile of this.tiles.values()) if (tile.seat === seat) return tile;
+    return null;
   }
 
   createTile(p) {
     const el = document.createElement('div');
     el.className = 'tile';
-    el.style.setProperty('--seat', SEAT_CSS[p.seat]);
     el.innerHTML = `
       <video autoplay playsinline></video>
       <div class="avatar"></div>
@@ -58,7 +72,6 @@ export class Hud {
       <div class="stamp">RAUS!</div>
       <div class="badges"></div>
       <div class="nameplate"><span class="nm"></span><span class="hens"></span></div>`;
-    $('#tiles').appendChild(el);
     const tile = {
       el,
       playerId: p.id,
@@ -81,24 +94,43 @@ export class Hud {
     return tile;
   }
 
+  positionFor(p) {
+    if (p.seat < 0) return 'spec';
+    if (p.id === this.myId) return 'self';
+    if (this.mySeat < 0) {
+      // spectating: show the stations as seen from seat 0
+      return p.seat === 0 ? 'self' : LAYOUTS[this.n][p.seat - 1];
+    }
+    const k = (p.seat - this.mySeat + this.n) % this.n;
+    return LAYOUTS[this.n][k - 1] || 'spec';
+  }
+
   updateTile(tile, p) {
-    const rel = this.mySeat >= 0 ? (p.seat - this.mySeat + 4) % 4 : p.seat;
-    for (const pos of POS) tile.el.classList.toggle('pos-' + pos, POS[rel] === pos);
+    if (tile.seat !== p.seat) tile.henCount = -1;
+    tile.seat = p.seat;
+    const pos = this.positionFor(p);
+    for (const x of POSITIONS) tile.el.classList.toggle('pos-' + x, x === pos);
+    const parent = pos === 'spec' ? $('#spectators') : $('#tiles');
+    if (tile.el.parentElement !== parent) parent.appendChild(tile.el);
+    tile.el.style.setProperty('--seat', p.seat >= 0 ? SEAT_CSS[p.seat] : SPECTATOR_CSS);
+    tile.el.classList.toggle('spectator', p.seat < 0);
     tile.name.textContent = p.id === this.myId ? `${p.name} (du)` : p.name;
     tile.avatar.textContent = p.bot ? '🤖' : (p.name[0] || '?').toUpperCase();
-    const hasVideo = !!(tile.stream && tile.stream.getVideoTracks().length) && (p.media.cam || p.id === this.myId);
+    const hasVideo = !!(tile.stream && tile.stream.getVideoTracks().length);
     const camOn = p.id === this.myId ? this.localCamOn : p.media.cam;
     tile.video.style.visibility = hasVideo && camOn ? 'visible' : 'hidden';
     tile.avatar.style.display = hasVideo && camOn ? 'none' : 'flex';
     const badges = [];
+    if (p.seat < 0) badges.push('👀');
     if (p.score) badges.push(`🏆 ${p.score}`);
     if (!p.bot && !p.media.mic) badges.push('🔇');
     tile.badges.innerHTML = badges.map((b) => `<span>${b}</span>`).join('');
+    if (p.seat < 0) tile.hens.innerHTML = '<small>schaut zu</small>';
   }
 
   refreshTiles() {
     for (const p of this.players) {
-      const tile = this.tiles.get(p.seat);
+      const tile = this.tiles.get(p.id);
       if (tile) this.updateTile(tile, p);
     }
   }
@@ -161,6 +193,7 @@ export class Hud {
 
   updateHens(state) {
     for (const tile of this.tiles.values()) {
+      if (tile.seat < 0 || tile.seat >= state.n) continue;
       const seat = state.seats[tile.seat];
       const n = seat.chickens;
       const inRound = state.phase === 'lobby' || seat.active;
@@ -179,7 +212,7 @@ export class Hud {
   }
 
   flashTile(seat, gold = false) {
-    const tile = this.tiles.get(seat);
+    const tile = this.tileBySeat(seat);
     if (!tile) return;
     tile.flash.classList.toggle('gold', gold);
     tile.flash.classList.remove('go');
@@ -192,8 +225,8 @@ export class Hud {
     }
   }
 
-  emote(seat, e) {
-    const tile = this.tiles.get(seat);
+  emote(playerId, e) {
+    const tile = this.tiles.get(playerId);
     if (!tile) return;
     const d = document.createElement('div');
     d.className = 'emote';
@@ -203,7 +236,7 @@ export class Hud {
   }
 
   tileCenter(seat) {
-    const tile = this.tiles.get(seat);
+    const tile = this.tileBySeat(seat);
     if (!tile) return null;
     const r = tile.el.getBoundingClientRect();
     return { x: r.left + r.width / 2, y: r.top + r.height * 0.4 };
@@ -255,9 +288,18 @@ export class Hud {
     if (!show) return;
     const isHost = info.hostId === myId;
     const host = info.players.find((p) => p.id === info.hostId);
+    const n = info.n;
+
+    // Player count selector (host only)
+    for (const b of document.querySelectorAll('#seat-count button')) {
+      const v = Number(b.dataset.n);
+      b.classList.toggle('active', v === n);
+      b.disabled = !isHost;
+    }
+
     const list = $('#lobby-players');
     list.innerHTML = '';
-    for (let seat = 0; seat < P.NUM_SEATS; seat++) {
+    for (let seat = 0; seat < n; seat++) {
       const p = info.players.find((x) => x.seat === seat);
       const li = document.createElement('li');
       if (!p) {
@@ -281,15 +323,22 @@ export class Hud {
       }
       list.appendChild(li);
     }
-    const n = info.players.length;
+    const watchers = info.players.filter((p) => p.seat < 0);
+    const spec = $('#lobby-spectators');
+    spec.classList.toggle('hidden', !watchers.length);
+    spec.textContent = watchers.length ? `👀 Zuschauer: ${watchers.map((p) => p.name).join(', ')}` : '';
+
+    const seated = info.players.filter((p) => p.seat >= 0).length;
+    const free = n - seated;
     $('#btn-bot').classList.toggle('hidden', !isHost);
-    $('#btn-bot').disabled = n >= P.NUM_SEATS;
+    $('#btn-bot').disabled = free <= 0;
     $('#btn-start').classList.toggle('hidden', !isHost);
-    $('#btn-start').disabled = n < 2;
-    $('#lobby-title').textContent = n < 2 ? 'Warte auf Mitspieler …' : 'Bereit zum Abheben!';
-    let hint = '';
+    $('#btn-start').disabled = free > 0;
+    $('#lobby-title').textContent = free > 0 ? `Warte auf Mitspieler … (${seated}/${n})` : 'Bereit zum Abheben!';
+    let hint;
     if (!isHost) hint = `Warte, bis ${host ? host.name : 'der Host'} die Runde startet.`;
-    else if (n < 2) hint = 'Lade Freunde über den Link ein oder füge Bots hinzu.';
+    else if (free > 0) hint = `Noch ${free === 1 ? 'ein Platz' : free + ' Plätze'} frei – auf Freunde warten, Bot hinzufügen oder weniger Spieler wählen.`;
+    else if (watchers.length) hint = 'Alle Plätze besetzt – für mehr Mitspieler die Spielerzahl erhöhen.';
     else hint = 'Alle da? Dann los!';
     $('#lobby-hint').textContent = hint;
   }

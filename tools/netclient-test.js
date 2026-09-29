@@ -6,7 +6,6 @@ import * as P from '../shared/physics.js';
 
 const LAT = Number(process.argv[2] ?? 80) / 1000; // one-way latency in seconds
 const PORT = Number(process.argv[3] ?? 3000);
-const ROOM = 'NT' + Math.floor(Math.random() * 9999);
 
 const ws = new WebSocket(`ws://localhost:${PORT}/ws`);
 const now = () => performance.now() / 1000;
@@ -25,7 +24,7 @@ let started = false;
 
 ws.on('open', () => {
   for (let i = 0; i < 6; i++) setTimeout(() => send({ t: 'ping', c: now() }), i * 60);
-  setTimeout(() => send({ t: 'join', room: ROOM, name: 'Tester' }), 400);
+  setTimeout(() => send({ t: 'join', name: 'Tester' }), 400);
 });
 
 ws.on('message', (raw) => {
@@ -39,6 +38,7 @@ ws.on('message', (raw) => {
       }
     } else if (m.t === 'welcome') {
       mySeat = m.seat;
+      send({ t: 'seats', n: 2 });
       send({ t: 'addBot' });
       setTimeout(() => send({ t: 'start' }), 300);
     } else if (m.t === 's') {
@@ -67,7 +67,7 @@ const timer = setInterval(() => {
   const t = now() + offset;
   const s = P.cloneState(latest);
   P.simulateTo(s, t, null);
-  const d = P.wrapAngle(s.theta - P.paddleAngle(mySeat));
+  const d = P.wrapAngle(s.theta - P.paddleAngle(mySeat, s.n));
   const h = P.planePose(s).h;
   if (prevD !== null && prevD < -0.04 && d >= -0.04 && h < 0.6) {
     presses++;

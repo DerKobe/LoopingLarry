@@ -20,7 +20,6 @@ const app = {
   joined: false,
   myId: null,
   mySeat: -1,
-  room: null,
   lobby: null,
   micOn: true,
   camOn: true,
@@ -36,10 +35,7 @@ window.__dbg = { net, predictor, world, P };
 
 // ------------------------------------------------------------------ join screen
 
-const params = new URLSearchParams(location.search);
-$('#in-room').value = (params.get('room') || '').toUpperCase();
 $('#in-name').value = localStorage.getItem('ll-name') || '';
-if ($('#in-room').value) $('#btn-join').textContent = 'Raum beitreten ✈️';
 
 async function enableMedia() {
   try {
@@ -74,16 +70,9 @@ if (navigator.permissions) {
     .catch(() => {});
 }
 
-function randomRoom() {
-  const words = ['HUHN', 'EI', 'LARRY', 'HOF', 'FARM', 'FLUG', 'GACK'];
-  return words[Math.floor(Math.random() * words.length)] + Math.floor(10 + Math.random() * 89);
-}
-
 $('#join-form').addEventListener('submit', async (e) => {
   e.preventDefault();
   const name = $('#in-name').value.trim() || 'Pilot';
-  let room = $('#in-room').value.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
-  if (!room) room = randomRoom();
   localStorage.setItem('ll-name', name);
   $('#btn-join').disabled = true;
   $('#join-error').textContent = '';
@@ -92,7 +81,7 @@ $('#join-form').addEventListener('submit', async (e) => {
   if (!mesh.localStream) await enableMedia();
   try {
     if (!net.ws || net.ws.readyState > 1) await net.connect();
-    net.send({ t: 'join', room, name });
+    net.send({ t: 'join', name });
   } catch (err) {
     $('#join-error').textContent = 'Keine Verbindung zum Server.';
     $('#btn-join').disabled = false;
@@ -111,13 +100,11 @@ net.addEventListener('welcome', (e) => {
   app.joined = true;
   app.myId = m.id;
   app.mySeat = m.seat;
-  app.room = m.room;
   predictor.mySeat = m.seat;
   world.roundId = -1; // leave the demo: rebuild chickens from the real state
   $('#join').classList.add('hidden');
   $('#hud').classList.remove('hidden');
-  $('#room-code').textContent = m.room;
-  history.replaceState(null, '', `?room=${m.room}`);
+  if (location.search) history.replaceState(null, '', '/');
   mesh.start(m.id, m.iceServers, m.peers);
   if (mesh.localStream) hud.setStream(app.myId, mesh.localStream);
   hud.localCamOn = app.camOn;
@@ -131,10 +118,12 @@ net.addEventListener('lobby', (e) => {
   app.lobby = info;
   const me = info.players.find((p) => p.id === app.myId);
   if (me) {
+    if (me.seat !== app.mySeat && app.lobby && me.seat >= 0) toast('Du hast jetzt einen Platz am Hof 🐔');
     app.mySeat = me.seat;
     predictor.mySeat = me.seat;
   }
-  hud.setPlayers(info.players, app.myId);
+  if (world.n !== info.n) world.layout(info.n);
+  hud.setPlayers(info.players, app.myId, info.n);
   world.setSeatInfo(info.players, app.mySeat);
   hud.renderLobby(info, app.myId, info.phase);
 });
@@ -162,7 +151,7 @@ net.addEventListener('roundEnd', (e) => {
   setTimeout(() => hud.hideWinner(), 5500);
 });
 
-net.addEventListener('emote', (e) => hud.emote(e.detail.seat, e.detail.e));
+net.addEventListener('emote', (e) => hud.emote(e.detail.id, e.detail.e));
 
 net.addEventListener('close', () => {
   if (app.joined) {
@@ -210,14 +199,9 @@ $('#lobby-players').addEventListener('click', (e) => {
   const b = e.target.closest('.rm');
   if (b) net.send({ t: 'removeBot', seat: Number(b.dataset.seat) });
 });
-$('#btn-copy').addEventListener('click', async () => {
-  const url = `${location.origin}/?room=${app.room}`;
-  try {
-    await navigator.clipboard.writeText(url);
-    toast('Einladungslink kopiert 📋');
-  } catch {
-    prompt('Link zum Teilen:', url);
-  }
+$('#seat-count').addEventListener('click', (e) => {
+  const b = e.target.closest('button');
+  if (b && !b.disabled) net.send({ t: 'seats', n: Number(b.dataset.n) });
 });
 $('#btn-leave').addEventListener('click', () => {
   location.href = '/';

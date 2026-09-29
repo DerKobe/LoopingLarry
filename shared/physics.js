@@ -12,7 +12,9 @@
 // (Lagrange):  phi'' = -cos(phi) * (G + C * omega^2 * sin(phi)) - D * phi'
 
 export const DT = 1 / 120;
-export const NUM_SEATS = 4;
+export const MAX_SEATS = 5;
+export const MIN_SEATS = 2;
+export const DEFAULT_SEATS = 4;
 export const START_CHICKENS = 3;
 
 // Geometry (world units, y is up, table surface at y = 0)
@@ -77,14 +79,15 @@ export function wrapAngle(a) {
   return a - Math.PI;
 }
 
-export function seatAngle(seat) {
-  return HALF_PI + seat * HALF_PI;
+// Stations are spread evenly around the tower; seat 0 faces +z.
+export function seatAngle(seat, n) {
+  return HALF_PI + (seat * TAU) / n;
 }
-export function paddleAngle(seat) {
-  return seatAngle(seat) - PADDLE_OFFSET;
+export function paddleAngle(seat, n) {
+  return seatAngle(seat, n) - PADDLE_OFFSET;
 }
-export function chickenAngle(seat) {
-  return seatAngle(seat) + CHICKEN_OFFSET;
+export function chickenAngle(seat, n) {
+  return seatAngle(seat, n) + CHICKEN_OFFSET;
 }
 
 // Deterministic pseudo random number in [0,1) from two numbers.
@@ -114,14 +117,15 @@ export function flapHeight(r, alpha) {
   return LEVER_BASE_H + d * Math.sin(alpha);
 }
 
-export function createState(t = 0) {
+export function createState(t = 0, n = DEFAULT_SEATS) {
   const seats = [];
-  for (let i = 0; i < NUM_SEATS; i++) {
+  for (let i = 0; i < MAX_SEATS; i++) {
     seats.push({ occ: false, active: false, chickens: 0, pressT: -1e9, hitDone: true, gate: false });
   }
   return {
     t,
     tick: 0,
+    n, // number of stations on the board (2..5)
     phase: 'lobby', // lobby | countdown | playing | ended
     releaseT: 0,
     roundId: 0,
@@ -249,14 +253,14 @@ export function step(s, inputs) {
   const pose = planePose(s);
   const bottom = pose.h - PLANE_HALF_H;
 
-  for (let i = 0; i < NUM_SEATS; i++) {
+  for (let i = 0; i < s.n; i++) {
     const p = s.seats[i];
     if (!p.active || p.chickens <= 0) continue;
 
     // Lever
     const tau = s.t - p.pressT;
     if (tau >= 0 && tau < PADDLE_TOTAL) {
-      const d = wrapAngle(s.theta - paddleAngle(i));
+      const d = wrapAngle(s.theta - paddleAngle(i, s.n));
       if (Math.abs(d) < PADDLE_HALF_WIDTH) {
         const a = paddleAlpha(tau);
         const aPrev = paddleAlpha(tau - dt);
@@ -284,7 +288,7 @@ export function step(s, inputs) {
     }
 
     // Chickens
-    const dc = wrapAngle(s.theta - chickenAngle(i));
+    const dc = wrapAngle(s.theta - chickenAngle(i, s.n));
     if (Math.abs(dc) < CHICKEN_HALF_WIDTH) {
       if (!p.gate && pose.h < CHICKEN_HIT_H) {
         p.gate = true;

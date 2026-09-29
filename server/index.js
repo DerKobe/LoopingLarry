@@ -27,7 +27,7 @@ const app = express();
 app.use(express.static(path.join(root, 'public')));
 app.use('/shared', express.static(path.join(root, 'shared')));
 app.use('/vendor/three', express.static(path.join(root, 'node_modules/three')));
-app.get('/health', (req, res) => res.json({ ok: true, rooms: rooms.size }));
+app.get('/health', (req, res) => res.json({ ok: true, players: farm.clients.size, phase: farm.state.phase }));
 
 let server;
 if (process.env.SSL_KEY && process.env.SSL_CERT) {
@@ -36,16 +36,13 @@ if (process.env.SSL_KEY && process.env.SSL_CERT) {
   server = http.createServer(app);
 }
 
-const rooms = new Map();
+// There is exactly one farm – everybody who opens the page plays together.
+const farm = new Room('HOF');
 const wss = new WebSocketServer({ server, path: '/ws', maxPayload: 64 * 1024 });
 
 function cleanName(n) {
   n = String(n || '').replace(/[<>\n\r\t]/g, '').trim().slice(0, 16);
   return n || 'Pilot';
-}
-function cleanRoom(r) {
-  r = String(r || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8);
-  return r.length >= 3 ? r : null;
 }
 
 wss.on('connection', (ws) => {
@@ -70,33 +67,16 @@ wss.on('connection', (ws) => {
     }
 
     if (msg.t === 'join') {
-      if (room) return;
-      const roomId = cleanRoom(msg.room);
-      if (!roomId) {
-        ws.send(JSON.stringify({ t: 'error', message: 'Ungültiger Raumcode.' }));
-        return;
-      }
-      let r = rooms.get(roomId);
-      if (!r) {
-        r = new Room(roomId, (empty) => {
-          empty.destroy();
-          rooms.delete(empty.id);
-        });
-        rooms.set(roomId, r);
-      }
-      const res = r.addClient(ws, id, cleanName(msg.name));
+      if (client) return;
+      const res = farm.addClient(ws, id, cleanName(msg.name));
       if (res.error) {
         ws.send(JSON.stringify({ t: 'error', message: res.error }));
-        if (r.clients.size === 0) {
-          r.destroy();
-          rooms.delete(roomId);
-        }
         return;
       }
-      room = r;
+      room = farm;
       client = res.client;
       const peers = [...room.clients.values()].filter((c) => c.id !== id).map((c) => c.id);
-      ws.send(JSON.stringify({ t: 'welcome', id, seat: client.seat, room: room.id, peers, iceServers }));
+      ws.send(JSON.stringify({ t: 'welcome', id, seat: client.seat, peers, iceServers }));
       room.broadcast({ t: 'peer-joined', id, name: client.name });
       room.sendLobby();
       room.broadcastSnapshot();
@@ -132,7 +112,7 @@ server.listen(PORT, () => {
 function shutdown(signal) {
   console.log(`${signal} erhalten – fahre herunter …`);
   for (const ws of wss.clients) ws.close(1012, 'Server-Neustart');
-  for (const room of rooms.values()) room.destroy();
+  farm.destroy();
   server.close(() => process.exit(0));
   setTimeout(() => process.exit(0), 3000).unref();
 }
