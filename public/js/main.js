@@ -402,6 +402,23 @@ function handleState(state, now, events) {
   }
 
   hud.updateHens(state);
+  updateTempo(state);
+}
+
+let lastTempoText = '';
+function updateTempo(state) {
+  const el = $('#tempo');
+  const show = state.phase === 'playing';
+  el.classList.toggle('hidden', !show);
+  if (!show) return;
+  const factor = state.omega / state.omega0;
+  const text = '×' + factor.toFixed(1).replace('.', ',');
+  if (text !== lastTempoText) {
+    lastTempoText = text;
+    el.querySelector('b').textContent = text;
+    // green -> yellow -> red as the motor speeds up (red at x3)
+    el.style.setProperty('--heat', String(Math.max(0, Math.round(120 - (factor - 1) * 60))));
+  }
 }
 
 // Background demo while on the join screen: Larry flies around on his own.

@@ -35,9 +35,9 @@ Der Hof ordnet die Stationen dann gleichmäßig um den Turm an.
 ### Flitschen: halten = aufladen
 
 Solange du die Taste hältst, spannt sich deine Wippe (Anzeige am Hebel). Beim **Loslassen** schnellt
-sie hoch – je länger du gehalten hast, desto weiter fliegt Larry. Nach **1 Sekunde** ist die Wippe
+sie hoch – je länger du gehalten hast, desto weiter fliegt Larry. Nach **einer halben Sekunde** (`CHARGE_MAX`) ist die Wippe
 voll gespannt und schnellt **von selbst** los; aufladen und abwarten geht also nicht. Wer volle Kraft
-will, muss eine Sekunde vorher anfangen.
+will, muss rechtzeitig vorher anfangen.
 
 | Ladung | Wirkung (bei 4 Spielern) |
 | --- | --- |
@@ -49,14 +49,15 @@ will, muss eine Sekunde vorher anfangen.
 Das Timing (wo in der Trefferzone der Hebel Larry erwischt) kostet bei schlechten Treffern etwas Kraft
 und entscheidet bei voller Ladung über den Looping.
 
-Der Motor wird im Lauf einer Runde schneller. Mit `1`–`4` schickst du Emotes (👍 😂 😱 😡),
+Der Motor wird im Lauf einer Runde immer schneller (Anzeige „⚡ Tempo“ oben links): Das Tempo
+verdoppelt sich alle 90 Sekunden, ohne Obergrenze. Irgendwann hält niemand mehr mit – so endet jede Runde. Mit `1`–`4` schickst du Emotes (👍 😂 😱 😡),
 `M` schaltet das Mikro, `V` die Kamera.
 
 ## Physik
 
 Die Simulation (`shared/physics.js`) läuft deterministisch mit 120 Hz auf Server *und* Client:
 
-- Der Motor dreht den Arm um die senkrechte Achse (Azimut θ, Winkelgeschwindigkeit ω, steigt langsam an).
+- Der Motor dreht den Arm um die senkrechte Achse (Azimut θ, Winkelgeschwindigkeit ω, verdoppelt sich alle 90 s).
 - Der Arm ist am Turm oben aufgehängt und kann frei nach oben/unten schwingen (Elevation φ).
   Bewegungsgleichung eines angetriebenen, gelenkig gelagerten Arms (Lagrange):
   `φ'' = −cos φ · (G + C·ω²·sin φ) − D·φ'` – Schwerkraft zieht das Flugzeug auf den Tisch,
