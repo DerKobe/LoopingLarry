@@ -34,27 +34,32 @@ export class Sfx {
     return buf;
   }
 
+  // Motor hum: kept well below the effects, a soft drone whose pitch climbs
+  // with the arm speed to build up tension over the round.
   startMotor() {
     const c = this.ctx;
     const osc = c.createOscillator();
     osc.type = 'sawtooth';
     const osc2 = c.createOscillator();
-    osc2.type = 'square';
+    osc2.type = 'triangle';
+    const osc2g = c.createGain();
+    osc2g.gain.value = 0.5;
     const lp = c.createBiquadFilter();
     lp.type = 'lowpass';
-    lp.frequency.value = 420;
-    lp.Q.value = 3;
+    lp.frequency.value = 300;
+    lp.Q.value = 1.2;
     const g = c.createGain();
     g.gain.value = 0;
+    // gentle propeller flutter (was a harsh 25 % buzz)
     const lfo = c.createOscillator();
     const lfoG = c.createGain();
-    lfo.frequency.value = 22;
-    lfoG.gain.value = 0.25;
+    lfo.frequency.value = 20;
+    lfoG.gain.value = 0.08;
     const am = c.createGain();
-    am.gain.value = 0.75;
+    am.gain.value = 0.92;
     lfo.connect(lfoG).connect(am.gain);
     osc.connect(lp);
-    osc2.connect(lp);
+    osc2.connect(osc2g).connect(lp);
     lp.connect(g).connect(am).connect(this.master);
     osc.start();
     osc2.start();
@@ -66,12 +71,12 @@ export class Sfx {
   updateMotor(omega, near, active) {
     if (!this.motor) return;
     const t = this.ctx.currentTime;
-    const f = 52 + omega * 22;
+    const f = 48 + omega * 20; // pitch rises with the speed
     this.motor.osc.frequency.setTargetAtTime(f, t, 0.1);
-    this.motor.osc2.frequency.setTargetAtTime(f * 1.505, t, 0.1);
-    this.motor.lfo.frequency.setTargetAtTime(14 + omega * 6, t, 0.1);
-    this.motor.lp.frequency.setTargetAtTime(300 + near * 900, t, 0.08);
-    const vol = active ? 0.035 + near * 0.07 : 0.02;
+    this.motor.osc2.frequency.setTargetAtTime(f * 2, t, 0.1);
+    this.motor.lfo.frequency.setTargetAtTime(12 + omega * 5, t, 0.1);
+    this.motor.lp.frequency.setTargetAtTime(220 + near * 350 + omega * 35, t, 0.08);
+    const vol = active ? 0.011 + near * 0.014 + Math.min(0.008, omega * 0.001) : 0.006;
     this.motor.g.gain.setTargetAtTime(vol, t, 0.1);
   }
 

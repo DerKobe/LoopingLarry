@@ -34,8 +34,17 @@ export const GROUND_FRICTION = 0.0; // omega is motor driven, so nothing to slow
 
 // Motor
 export const OMEGA_START = 1.95; // rad/s at the beginning of a round
-export const OMEGA_RAMP = 0.009; // relative speed-up per second of play
-export const OMEGA_MAX_FACTOR = 1.6;
+// The motor never stops speeding up: the speed doubles every OMEGA_DOUBLING
+// seconds of play (x1.26 after 30 s, x2 after 90 s, x4 after 3 min). Sooner or
+// later nobody can keep up any more, so every round has a natural end.
+export const OMEGA_DOUBLING = 90;
+// Above this speed the centrifugal term stops growing – otherwise the arm
+// would float above the chickens at high speed and the round could never end.
+export const CENTRIFUGAL_OMEGA_CAP = 3.2;
+
+export function motorSpeed(omega0, playTime) {
+  return omega0 * Math.pow(2, Math.max(0, playTime) / OMEGA_DOUBLING);
+}
 export const OMEGA_LOBBY = 1.4;
 export const COUNTDOWN_SECS = 3;
 
@@ -215,7 +224,7 @@ export function step(s, inputs) {
   // Motor
   if (s.phase === 'playing' || s.phase === 'ended') {
     const el = Math.max(0, s.t - s.releaseT);
-    s.omega = s.omega0 * Math.min(OMEGA_MAX_FACTOR, 1 + OMEGA_RAMP * el);
+    s.omega = motorSpeed(s.omega0, el);
   } else if (s.phase === 'countdown') {
     s.omega += (s.omega0 - s.omega) * Math.min(1, dt * 3);
   } else {
@@ -236,7 +245,8 @@ export function step(s, inputs) {
       s.phiDot = 0;
     }
   } else {
-    const acc = -Math.cos(s.phi) * (GRAVITY + CENTRIFUGAL * s.omega * s.omega * Math.sin(s.phi)) - DAMPING * s.phiDot;
+    const w = Math.min(s.omega, CENTRIFUGAL_OMEGA_CAP);
+    const acc = -Math.cos(s.phi) * (GRAVITY + CENTRIFUGAL * w * w * Math.sin(s.phi)) - DAMPING * s.phiDot;
     s.phiDot += acc * dt;
     s.phi += s.phiDot * dt;
   }

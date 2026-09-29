@@ -452,7 +452,7 @@ kbd {
 #spectators {
   position: fixed;
   left: 16px;
-  top: 44px;
+  top: 84px;
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -485,6 +485,20 @@ kbd {
   flex-direction: column;
   gap: 6px;
   z-index: 6;
+}
+.tempo {
+  background: hsl(var(--heat, 120) 70% 45%);
+  color: #fff;
+  border-radius: 12px;
+  padding: 4px 12px;
+  font-size: 17px;
+  font-weight: 700;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  transition: background 0.5s;
+  align-self: flex-start;
+}
+.tempo b {
+  font-size: 20px;
 }
 .net-info {
   font-size: 13px;
