@@ -60,15 +60,27 @@ export const PADDLE_DOWN = 0.2;
 export const PADDLE_TOTAL = PADDLE_UP + PADDLE_HOLD + PADDLE_DOWN;
 export const PADDLE_COOLDOWN = 0.42;
 
-// Kick strength (rad/s of arm elevation speed). Normal hits stay below the
-// looping threshold (~4.1); a near perfect hit launches a fast looping that
-// lands roughly three stations further.
-export const KICK_MIN = 1.9;
-export const KICK_MAX = 3.9;
-export const KICK_JITTER = 0.2;
-export const LOOP_Q = 0.9;
+// Charging: holding the button winds up the lever. Releasing fires it with a
+// power of (held time / CHARGE_MAX); at CHARGE_MAX it fires on its own.
+export const CHARGE_MAX = 1.0; // seconds for a full charge
+
+// Kick strength (rad/s of arm elevation speed) grows with the charge. Normal
+// hits stay below the looping threshold (~4.1). A full charge that also hits
+// the sweet spot of the lever launches a fast looping that lands roughly three
+// stations further. Timing (q) only shaves off a little of the power.
+export const KICK_MIN = 1.8;
+export const KICK_MAX = 3.85;
+export const KICK_JITTER = 0.15;
+export const KICK_TIMING_LOSS = 0.15; // an edge hit loses 15 % of the power
+export const FULL_POWER = 0.97;
+export const LOOP_Q = 0.7;
 export const LOOP_KICK = 6.0;
 export const BLOCK_KICK = 1.4;
+
+export function kickFor(power, q, jitter) {
+  if (power >= FULL_POWER && q >= LOOP_Q) return LOOP_KICK + jitter * 1.5;
+  return (KICK_MIN + (KICK_MAX - KICK_MIN) * power) * (1 - KICK_TIMING_LOSS * (1 - q)) + jitter;
+}
 
 const TAU = Math.PI * 2;
 const HALF_PI = Math.PI / 2;
@@ -120,7 +132,7 @@ export function flapHeight(r, alpha) {
 export function createState(t = 0, n = DEFAULT_SEATS) {
   const seats = [];
   for (let i = 0; i < MAX_SEATS; i++) {
-    seats.push({ occ: false, active: false, chickens: 0, pressT: -1e9, hitDone: true, gate: false });
+    seats.push({ occ: false, active: false, chickens: 0, pressT: -1e9, power: 0, hitDone: true, gate: false });
   }
   return {
     t,
@@ -158,10 +170,11 @@ export function canPress(s, seat, st) {
   return st - p.pressT >= PADDLE_COOLDOWN;
 }
 
-function applyPress(s, seat, st) {
+function applyPress(s, seat, st, power) {
   if (!canPress(s, seat, st)) return;
   const p = s.seats[seat];
   p.pressT = st;
+  p.power = Math.max(0, Math.min(1, Number.isFinite(power) ? power : 0));
   p.hitDone = false;
 }
 
@@ -188,7 +201,7 @@ export function aliveSeats(s) {
 export function step(s, inputs) {
   const dt = DT;
   if (inputs) {
-    for (const inp of inputs) applyPress(s, inp.seat, inp.st);
+    for (const inp of inputs) applyPress(s, inp.seat, inp.st, inp.power);
   }
   s.t += dt;
   s.tick++;
@@ -269,18 +282,15 @@ export function step(s, inputs) {
           if (a > aPrev && !p.hitDone) {
             const q = Math.max(0, 1 - Math.abs(d) / PADDLE_HALF_WIDTH);
             const jitter = (hash01(p.pressT * 1000, i + 1) - 0.5) * 2 * KICK_JITTER;
-            const kick =
-              q >= LOOP_Q
-                ? LOOP_KICK + jitter * 1.5
-                : KICK_MIN + (KICK_MAX - KICK_MIN) * Math.pow(q / LOOP_Q, 1.2) + jitter;
+            const kick = kickFor(p.power, q, jitter);
             if (kick > s.phiDot) s.phiDot = kick;
             p.hitDone = true;
-            s.lastHit = { seat: i, q, t: s.t, pressT: p.pressT, kind: 'hit' };
+            s.lastHit = { seat: i, q, power: p.power, t: s.t, pressT: p.pressT, kind: 'hit' };
           } else if (a > LEVER_MAX * 0.5 && s.phiDot < BLOCK_KICK) {
             s.phiDot = BLOCK_KICK;
             if (!p.hitDone) {
               p.hitDone = true;
-              s.lastHit = { seat: i, q: 0, t: s.t, pressT: p.pressT, kind: 'block' };
+              s.lastHit = { seat: i, q: 0, power: p.power, t: s.t, pressT: p.pressT, kind: 'block' };
             }
           }
         }

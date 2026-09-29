@@ -45,8 +45,9 @@
           </form>
         </div>
         <div class="howto">
-          <b>So geht's:</b> Larry kreist über dem Hof. Kommt er an deinem Hebel vorbei, drück
-          <kbd>Leertaste</kbd> oder klick – im richtigen Moment! Perfektes Timing schickt ihn in einen Looping.
+          <b>So geht's:</b> Larry kreist über dem Hof. Kommt er an deinem Hebel vorbei, lass
+          <kbd>Leertaste</kbd> oder Maustaste im richtigen Moment los. Je länger du vorher hältst, desto weiter fliegt er –
+          nach 1 Sekunde schnellt der Hebel von selbst. Volle Ladung plus perfektes Timing gibt einen Looping.
           Verlierst du alle 3 Hühner, bist du raus. Die letzte Farm mit Huhn gewinnt.
         </div>
       </div>
@@ -80,6 +81,7 @@
 
       <div id="center-msg"></div>
       <div id="popups"></div>
+      <div id="charge-meter" class="hidden"><span></span></div>
 
       <div id="winner" class="hidden">
         <div class="winner-card">
@@ -90,7 +92,7 @@
       </div>
 
       <div id="controls">
-        <div class="hint"><kbd>Leertaste</kbd> / Klick = Hebel &nbsp;·&nbsp; <kbd>1</kbd>–<kbd>4</kbd> Emotes</div>
+        <div class="hint"><kbd>Leertaste</kbd> / Maus halten = aufladen, loslassen = Hebel &nbsp;·&nbsp; <kbd>1</kbd>–<kbd>4</kbd> Emotes</div>
         <button id="btn-mic" class="ctrl" title="Mikrofon (M)">🎙️</button>
         <button id="btn-cam" class="ctrl" title="Kamera (V)">📹</button>
         <label class="ctrl vol" title="Lautstärke Effekte">🔊<input id="in-vol" type="range" min="0" max="1" step="0.05" value="0.6" /></label>

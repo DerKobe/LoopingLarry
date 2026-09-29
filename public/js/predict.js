@@ -8,6 +8,7 @@ export class Predictor {
     this.snaps = [];
     this.pending = [];
     this.mySeat = -1;
+    this.charging = {}; // seat -> charge start of other players (display only)
   }
 
   addSnapshot(s) {
@@ -29,8 +30,8 @@ export class Predictor {
     return P.canPress(s, this.mySeat, now);
   }
 
-  press(st) {
-    this.pending.push({ seat: this.mySeat, st });
+  press(st, power) {
+    this.pending.push({ seat: this.mySeat, st, power });
   }
 
   // Returns { state, rem } – state advanced in fixed ticks, rem = leftover seconds (< DT)

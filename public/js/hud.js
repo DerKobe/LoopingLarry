@@ -242,6 +242,24 @@ export class Hud {
     return { x: r.left + r.width / 2, y: r.top + r.height * 0.4 };
   }
 
+  // ---------------------------------------------------------------- charge meter
+
+  // level < 0 hides the meter
+  chargeMeter(level, pos) {
+    const el = $('#charge-meter');
+    if (level < 0 || !pos) {
+      el.classList.add('hidden');
+      return;
+    }
+    el.classList.remove('hidden');
+    el.style.left = pos.x + 'px';
+    el.style.top = pos.y + 'px';
+    el.style.setProperty('--p', (level * 100).toFixed(1));
+    el.style.setProperty('--hue', String(Math.round(120 - level * 120)));
+    el.classList.toggle('full', level >= P.FULL_POWER);
+    el.querySelector('span').textContent = level >= P.FULL_POWER ? 'MAX' : Math.round(level * 100) + '%';
+  }
+
   // ---------------------------------------------------------------- messages
 
   popup(text, x, y, cls = '') {

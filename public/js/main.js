@@ -128,7 +128,10 @@ net.addEventListener('lobby', (e) => {
   hud.renderLobby(info, app.myId, info.phase);
 });
 
-net.addEventListener('s', (e) => predictor.addSnapshot(e.detail.s));
+net.addEventListener('s', (e) => {
+  predictor.addSnapshot(e.detail.s);
+  predictor.charging = e.detail.ch || {};
+});
 
 net.addEventListener('peer-joined', (e) => {
   if (e.detail.id !== app.myId) {
@@ -164,13 +167,57 @@ mesh.addEventListener('stream', (e) => hud.setStream(e.detail.id, e.detail.strea
 
 // ------------------------------------------------------------------ controls
 
-function flip() {
-  if (!app.joined || app.mySeat < 0) return;
+// ------------------------------------------------------------------ lever charging
+// Hold to wind up the lever, release to fire. The longer you hold, the harder
+// Larry flies – but after CHARGE_MAX the lever fires on its own.
+const charge = { active: false, start: 0, source: null, timer: null };
+
+function mayUseLever() {
+  const s = predictor.latest();
+  if (!app.joined || !s || app.mySeat < 0) return false;
+  const p = s.seats[app.mySeat];
+  if (!p || !p.occ) return false;
+  return !(s.phase === 'playing' && (!p.active || p.chickens <= 0));
+}
+
+function startCharge(source) {
+  if (charge.active || !mayUseLever()) return;
+  charge.active = true;
+  charge.source = source;
+  charge.start = net.serverNow();
+  // fire on our own at full charge (the frame loop checks too, the timer is the safety net)
+  charge.timer = setTimeout(() => charge.active && fire(1), P.CHARGE_MAX * 1000);
+  net.send({ t: 'charge', st: charge.start });
+  sfx.chargeStart();
+}
+
+function releaseCharge(source) {
+  if (!charge.active || (source && charge.source !== source)) return;
+  fire(Math.min(1, (net.serverNow() - charge.start) / P.CHARGE_MAX));
+}
+
+function fire(power) {
+  charge.active = false;
+  clearTimeout(charge.timer);
+  sfx.chargeStop();
+  const now = net.serverNow();
+  if (predictor.canPress(now)) return flipNow(power);
+  // Lever still swinging back from the last shot: fire as soon as it is ready
+  const s = predictor.predict(now).state;
+  const wait = s ? s.seats[app.mySeat].pressT + P.PADDLE_COOLDOWN - now : 1;
+  if (wait > 0 && wait < 0.5) setTimeout(() => flipNow(power), wait * 1000 + 5);
+}
+
+function flipNow(power) {
   const now = net.serverNow();
   if (!predictor.canPress(now)) return;
-  predictor.press(now);
-  net.send({ t: 'flip', st: now });
-  sfx.lever();
+  predictor.press(now, power);
+  net.send({ t: 'flip', st: now, power });
+  sfx.lever(power);
+}
+
+function chargeLevel(now) {
+  return charge.active ? Math.min(1, (now - charge.start) / P.CHARGE_MAX) : 0;
 }
 
 const EMOTES = ['👍', '😂', '😱', '😡'];
@@ -179,19 +226,26 @@ window.addEventListener('keydown', (e) => {
   if (e.target.tagName === 'INPUT') return;
   if (e.code === 'Space' || e.code === 'Enter' || e.code === 'ArrowUp' || e.code === 'KeyW') {
     e.preventDefault();
-    if (!e.repeat) flip();
+    if (!e.repeat) startCharge('key');
   } else if (e.code === 'KeyM') toggleMic();
   else if (e.code === 'KeyV') toggleCam();
   else if (/^Digit[1-4]$/.test(e.code) && !e.repeat) {
     net.send({ t: 'emote', e: EMOTES[Number(e.code.slice(5)) - 1] });
   }
 });
+window.addEventListener('keyup', (e) => {
+  if (e.code === 'Space' || e.code === 'Enter' || e.code === 'ArrowUp' || e.code === 'KeyW') releaseCharge('key');
+});
 $('#game').addEventListener('mousedown', (e) => {
-  if (e.button === 0) flip();
+  if (e.button === 0) startCharge('mouse');
 });
 $('#tiles').addEventListener('mousedown', (e) => {
-  if (e.button === 0) flip();
+  if (e.button === 0) startCharge('mouse');
 });
+window.addEventListener('mouseup', (e) => {
+  if (e.button === 0) releaseCharge('mouse');
+});
+window.addEventListener('blur', () => releaseCharge(null));
 
 $('#btn-start').addEventListener('click', () => net.send({ t: 'start' }));
 $('#btn-bot').addEventListener('click', () => net.send({ t: 'addBot' }));
@@ -258,19 +312,21 @@ function toast(text) {
 
 // ------------------------------------------------------------------ game loop
 
-function hitLabel(q, kind) {
+function hitLabel(q, kind, power) {
   if (kind === 'block') return ['Abgeblockt!', ''];
-  if (q > 0.85) return ['PERFEKT!', 'big'];
-  if (q > 0.6) return ['Stark!', ''];
-  if (q > 0.3) return ['Gut!', ''];
-  return ['Knapp!', ''];
+  const loop = power >= P.FULL_POWER && q >= P.LOOP_Q;
+  if (loop) return ['PERFEKT!', 'big'];
+  if (power >= P.FULL_POWER) return ['Volle Ladung!', 'big'];
+  if (power >= 0.6) return ['Kräftig!', ''];
+  if (power >= 0.3) return ['Mittel', ''];
+  return ['Stupser', ''];
 }
 
 function handleState(state, now, events) {
   // Round change
   if (state.roundId !== app.lastRoundId) {
     app.lastRoundId = state.roundId;
-    app.lastLoops = 0;
+    app.lastLoops = state.loops; // don't celebrate loopings that happened before we looked
     app.seenHits.clear();
     hud.hideWinner();
   }
@@ -316,7 +372,7 @@ function handleState(state, now, events) {
       if (h.kind === 'block') sfx.block();
       else sfx.hit(h.q);
       if (h.seat === app.mySeat) {
-        const [txt, cls] = hitLabel(h.q, h.kind);
+        const [txt, cls] = hitLabel(h.q, h.kind, h.power ?? 0);
         const p = world.planeScreenPos();
         hud.popup(txt, p.x, p.y - 40, cls);
       }
@@ -383,7 +439,19 @@ function frame() {
   let { state, rem } = predictor.predict(now);
   const live = !!state;
   if (!state) ({ state, rem } = attractState(now));
-  const events = world.update(state, rem, dt);
+
+  // Lever charging: auto-fire at full charge, show everybody's wind-up
+  if (charge.active && now - charge.start >= P.CHARGE_MAX) fire(1);
+  const charges = {};
+  if (live) {
+    for (const [seat, st] of Object.entries(predictor.charging)) {
+      if (Number(seat) !== app.mySeat) charges[seat] = Math.min(1, Math.max(0, (now - st) / P.CHARGE_MAX));
+    }
+  }
+  if (charge.active) charges[app.mySeat] = chargeLevel(now);
+  const events = world.update(state, rem, dt, charges);
+  hud.chargeMeter(charge.active ? chargeLevel(now) : -1, charge.active ? world.leverScreenPos(app.mySeat) : null);
+  if (charge.active) sfx.chargeUpdate(chargeLevel(now));
   if (live) {
     handleState(state, now, events);
     const pose = P.planePose(state);

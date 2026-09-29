@@ -603,7 +603,7 @@ export class World {
 
   // ---------------------------------------------------------------- frame
 
-  update(state, rem, dt) {
+  update(state, rem, dt, charges = {}) {
     this.time += dt;
     if (!state) {
       this.renderer.render(this.scene, this.camera);
@@ -667,8 +667,11 @@ export class World {
     for (let i = 0; i < this.n; i++) {
       const st = this.stations[i];
       const alpha = P.paddleAlpha(state.t + rem - state.seats[i].pressT);
-      st.lever.userData.beam.rotation.z = -alpha;
-      st.lever.userData.handle.rotation.z = alpha * 0.18;
+      // Winding up: the handle is pressed down, the flap is pulled back and trembles
+      const c = alpha === 0 ? charges[i] || 0 : 0;
+      const tremble = c > 0 ? Math.sin(this.time * (40 + c * 50)) * 0.012 * (0.3 + c) : 0;
+      st.lever.userData.beam.rotation.z = -alpha + c * 0.06 + tremble;
+      st.lever.userData.handle.rotation.z = -alpha * 0.18 - c * 0.16 + tremble;
       const out = state.phase === 'playing' && state.seats[i].active && state.seats[i].chickens <= 0;
       st.coop.scale.y = out ? 0.97 : 1;
     }
@@ -705,6 +708,13 @@ export class World {
   // Screen position of a seat's coop (for HUD popups)
   seatScreenPos(seat) {
     const p = polar(3.3, P.seatAngle(seat, this.n), 0.9).project(this.camera);
+    return { x: (p.x * 0.5 + 0.5) * window.innerWidth, y: (-p.y * 0.5 + 0.5) * window.innerHeight };
+  }
+
+  leverScreenPos(seat) {
+    if (seat < 0) return null;
+    // above the inner end of the flap, clear of the HUD at the bottom edge
+    const p = polar(P.LEVER_INNER_R + 0.25, P.paddleAngle(seat, this.n), 0.9).project(this.camera);
     return { x: (p.x * 0.5 + 0.5) * window.innerWidth, y: (-p.y * 0.5 + 0.5) * window.innerHeight };
   }
 

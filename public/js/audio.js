@@ -113,11 +113,48 @@ export class Sfx {
     return this.ctx && this.ctx.state === 'running';
   }
 
-  lever() {
+  lever(power = 0) {
     if (!this.ok()) return;
     const t = this.ctx.currentTime;
-    this.noise(t, 0.06, 1800, 1.5, 0.25);
-    this.tone(t, 'triangle', 220, 90, 0.08, 0.25);
+    this.noise(t, 0.06 + power * 0.06, 1800 - power * 600, 1.5, 0.25 + power * 0.2);
+    this.tone(t, 'triangle', 220 + power * 120, 90, 0.08 + power * 0.06, 0.25 + power * 0.15);
+  }
+
+  // Rising "spring tension" sound while the lever is charged
+  chargeStart() {
+    if (!this.ok() || this.chargeOsc) return;
+    const c = this.ctx;
+    const o = c.createOscillator();
+    o.type = 'sawtooth';
+    o.frequency.value = 140;
+    const f = c.createBiquadFilter();
+    f.type = 'bandpass';
+    f.frequency.value = 600;
+    f.Q.value = 4;
+    const g = c.createGain();
+    g.gain.value = 0.0001;
+    g.gain.exponentialRampToValueAtTime(0.06, c.currentTime + 0.05);
+    o.connect(f).connect(g).connect(this.master);
+    o.start();
+    this.chargeOsc = { o, f, g };
+  }
+
+  chargeUpdate(level) {
+    if (!this.chargeOsc) return;
+    const t = this.ctx.currentTime;
+    const wobble = level >= 0.97 ? Math.sin(t * 60) * 30 : 0;
+    this.chargeOsc.o.frequency.setTargetAtTime(140 + level * 520 + wobble, t, 0.02);
+    this.chargeOsc.f.frequency.setTargetAtTime(600 + level * 1400, t, 0.02);
+  }
+
+  chargeStop() {
+    if (!this.chargeOsc) return;
+    const { o, g } = this.chargeOsc;
+    const t = this.ctx.currentTime;
+    g.gain.cancelScheduledValues(t);
+    g.gain.setTargetAtTime(0.0001, t, 0.015);
+    o.stop(t + 0.1);
+    this.chargeOsc = null;
   }
 
   hit(q) {

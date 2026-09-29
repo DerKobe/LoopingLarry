@@ -24,6 +24,7 @@ export class Room {
     this.history = []; // states after each tick, newest last
     this.inputLog = []; // { seat, st }
     this.pendingInputs = []; // future inputs (bots, early clients)
+    this.charging = new Map(); // seat -> charge start (server time), only for display
     this.lastSnap = 0;
     this.endCandidate = null;
     this.winner = null;
@@ -196,8 +197,11 @@ export class Room {
   handle(client, msg) {
     const isHost = client.id === this.hostId;
     switch (msg.t) {
+      case 'charge':
+        if (client.seat >= 0 && Number.isFinite(Number(msg.st))) this.charging.set(client.seat, Number(msg.st));
+        break;
       case 'flip':
-        if (client.seat >= 0) this.onFlip(client.seat, Number(msg.st));
+        if (client.seat >= 0) this.onFlip(client.seat, Number(msg.st), Number(msg.power));
         break;
       case 'start':
         if (isHost) this.startRound();
@@ -306,13 +310,15 @@ export class Room {
 
   // ---------------------------------------------------------------- simulation
 
-  onFlip(seat, st) {
+  onFlip(seat, st, power) {
     if (seat === undefined || seat < 0) return;
     const s = this.state;
+    this.charging.delete(seat);
     if (!Number.isFinite(st)) st = s.t;
+    power = Number.isFinite(power) ? Math.max(0, Math.min(1, power)) : 0;
     const oldest = this.history.length ? this.history[0].t : s.t;
     st = Math.min(Math.max(st, s.t - MAX_REWIND, oldest + 1e-6), serverNow() + 0.05);
-    const input = { seat, st };
+    const input = { seat, st, power };
     if (st > s.t) {
       this.pendingInputs.push(input);
       return;
@@ -401,6 +407,8 @@ export class Room {
     }
   }
 
+  // Bots think like players: they look ahead up to one charge span, pick how
+  // hard they want to hit, start charging early enough and release on arrival.
   runBots() {
     const s = this.state;
     if (s.phase !== 'playing') return;
@@ -408,15 +416,17 @@ export class Room {
       const me = s.seats[seat];
       if (!me.active || me.chickens <= 0) continue;
       if (bot.plan && s.t > bot.plan.until) bot.plan = null;
-      if (bot.plan) continue;
-      const d = P.wrapAngle(s.theta - P.paddleAngle(seat, s.n));
-      if (d < -0.95 || d > -0.12) continue;
-      // Look ahead: how high is the plane at my lever, and will it dive onto my chickens?
+      if (bot.plan) continue; // committed to this approach
+      if (bot.nextThink && s.t < bot.nextThink) continue;
+      bot.nextThink = s.t + 0.05;
+
+      // Look ahead: when does the plane reach my lever, how high is it, will it dive onto my chickens?
       const sim = P.cloneState(s);
       let arrive = null;
       let hLever = 0;
       let hMin = Infinity;
-      for (let i = 0; i < 160; i++) {
+      const horizon = Math.ceil((P.CHARGE_MAX + 0.3) / P.DT);
+      for (let i = 0; i < horizon; i++) {
         P.step(sim, null);
         const dd = P.wrapAngle(sim.theta - P.paddleAngle(seat, s.n));
         const h = P.planePose(sim).h;
@@ -427,30 +437,39 @@ export class Room {
         if (dd > -P.PADDLE_HALF_WIDTH && dd < 0.6) hMin = Math.min(hMin, h);
         if (arrive !== null && P.wrapAngle(sim.theta - P.chickenAngle(seat, s.n)) > 0) break;
       }
-      // re-evaluate a few times per approach – another player may kick the plane meanwhile
-      if (arrive === null) {
-        bot.plan = { until: s.t + 0.05 };
-        continue;
-      }
+      if (arrive === null) continue;
       const threat = hLever < 0.8 && (hLever < 0.6 || hMin < P.CHICKEN_HIT_H + 0.08);
-      if (!threat) {
-        bot.plan = { until: s.t + 0.05 };
-        continue;
-      }
+      if (!threat) continue;
+
+      if (bot.want === undefined || bot.want === null) bot.want = pickPower();
+      const lead = arrive - s.t;
+      if (lead > bot.want * P.CHARGE_MAX + 0.03) continue; // not yet – start charging later
+
+      // Commit: start charging now, release when the plane arrives
       bot.plan = { until: arrive + 0.35 };
+      const want = bot.want;
+      bot.want = null;
       const missChance = 0.2 - bot.skill * 0.17;
       if (Math.random() < missChance) continue;
       const sigma = 0.075 - bot.skill * 0.055;
-      const noise = gauss() * sigma;
-      const pressT = Math.max(s.t + P.DT * 0.5, arrive - P.PADDLE_UP * 0.55 + noise);
-      this.pendingInputs.push({ seat, st: pressT });
+      const pressT = Math.max(s.t + P.DT * 0.5, arrive - P.PADDLE_UP * 0.55 + gauss() * sigma);
+      const power = Math.min(want, (pressT - s.t) / P.CHARGE_MAX);
+      this.charging.set(seat, s.t);
+      this.pendingInputs.push({ seat, st: pressT, power: Math.max(0, power) });
     }
   }
 
   // ---------------------------------------------------------------- networking
 
   snapshotMsg() {
-    return { t: 's', s: this.state, now: serverNow() };
+    // levers currently being charged (display only)
+    const ch = {};
+    for (const [seat, st] of this.charging) {
+      const released = this.state.seats[seat].pressT >= st;
+      if (released || this.state.t - st > P.CHARGE_MAX + 0.3) this.charging.delete(seat);
+      else ch[seat] = st;
+    }
+    return { t: 's', s: this.state, ch, now: serverNow() };
   }
 
   broadcastSnapshot() {
@@ -465,6 +484,14 @@ export class Room {
     const str = JSON.stringify(msg);
     for (const c of this.clients.values()) if (c.ws.readyState === 1) c.ws.send(str);
   }
+}
+
+// How hard a bot wants to hit: taps, medium shots and full charges.
+function pickPower() {
+  const r = Math.random();
+  if (r < 0.3) return 0.05 + Math.random() * 0.2;
+  if (r < 0.7) return 0.35 + Math.random() * 0.45;
+  return 1;
 }
 
 function gauss() {

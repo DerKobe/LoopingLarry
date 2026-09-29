@@ -27,18 +27,27 @@ Der Hof ordnet die Stationen dann gleichmäßig um den Turm an.
 
 1. Der Host startet die Runde. Larry steht **senkrecht** auf dem Turm und dreht sich schon.
 2. Countdown **3 – 2 – 1 – LOS!** – das Flugzeug kippt aus der Senkrechten und stürzt sich auf den Hof.
-3. Kommt Larry an deiner Station vorbei, drückst du **Leertaste** (oder Klick / Enter / ↑ / W).
+3. Kommt Larry an deiner Station vorbei, lässt du die **Leertaste** (oder Maustaste / Enter / ↑ / W) los.
    Deine Wippe schnellt hoch und schleudert das Flugzeug in die Luft.
 4. Fliegt Larry tief über deine Hühner, fällt eins vom Stapel. Ohne Hühner bist du raus.
 5. Die letzte Farm mit mindestens einem Huhn gewinnt die Runde.
 
-Timing ist alles:
+### Flitschen: halten = aufladen
 
-| Treffer | Wirkung |
+Solange du die Taste hältst, spannt sich deine Wippe (Anzeige am Hebel). Beim **Loslassen** schnellt
+sie hoch – je länger du gehalten hast, desto weiter fliegt Larry. Nach **1 Sekunde** ist die Wippe
+voll gespannt und schnellt **von selbst** los; aufladen und abwarten geht also nicht. Wer volle Kraft
+will, muss eine Sekunde vorher anfangen.
+
+| Ladung | Wirkung (bei 4 Spielern) |
 | --- | --- |
-| knapp (Rand der Trefferzone) | kleiner Hüpfer – landet meist beim nächsten Spieler |
-| gut / stark | hoher Bogen über einen oder zwei Gegner hinweg |
-| **PERFEKT** (Mitte der Zone) | **LOOPING** über den Turm – landet etwa drei Stationen weiter |
+| Stupser (kurz tippen) | kleiner Hüpfer – landet kurz vor dem nächsten Spieler |
+| halbe Ladung | landet auf den Hühnern des nächsten Spielers |
+| volle Ladung | hoher Bogen über den nächsten Spieler hinweg |
+| **volle Ladung + perfektes Timing** | **LOOPING** über den Turm – landet etwa drei Stationen weiter |
+
+Das Timing (wo in der Trefferzone der Hebel Larry erwischt) kostet bei schlechten Treffern etwas Kraft
+und entscheidet bei voller Ladung über den Looping.
 
 Der Motor wird im Lauf einer Runde schneller. Mit `1`–`4` schickst du Emotes (👍 😂 😱 😡),
 `M` schaltet das Mikro, `V` die Kamera.
