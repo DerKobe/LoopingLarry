@@ -52,6 +52,8 @@ export class World {
     this.shake = 0;
     this.time = 0;
 
+    this.occupied = [true, true, true, true, true]; // demo on the join screen shows all levers
+    this.n = P.DEFAULT_SEATS;
     this.buildEnvironment();
     this.buildBoard();
     this.buildStations();
@@ -62,7 +64,6 @@ export class World {
     this.prevRaw = null;
     this.prevVel = new THREE.Vector3();
     this.roundId = -1;
-    this.occupied = [false, false, false, false];
 
     window.addEventListener('resize', () => this.resize());
     this.resize();
@@ -148,10 +149,40 @@ export class World {
   }
 
   buildBoard() {
-    const cv = document.createElement('canvas');
-    cv.width = 1024;
-    cv.height = 1024;
-    const c = cv.getContext('2d');
+    this.boardCanvas = document.createElement('canvas');
+    this.boardCanvas.width = 1024;
+    this.boardCanvas.height = 1024;
+    this.boardTex = new THREE.CanvasTexture(this.boardCanvas);
+    this.boardTex.colorSpace = THREE.SRGBColorSpace;
+    this.boardTex.anisotropy = 8;
+    const board = new THREE.Mesh(new THREE.CylinderGeometry(BOARD_R, BOARD_R + 0.05, 0.1, 96), mat(0x3d5a80));
+    board.position.y = -0.05;
+    board.receiveShadow = true;
+    this.scene.add(board);
+    // Circle UVs map canvas (x, y) directly onto world (x, z) after rotating flat
+    const top = new THREE.Mesh(new THREE.CircleGeometry(BOARD_R, 96), new THREE.MeshStandardMaterial({ map: this.boardTex, roughness: 0.9 }));
+    top.rotation.x = -Math.PI / 2;
+    top.position.y = 0.001;
+    top.receiveShadow = true;
+    this.scene.add(top);
+
+    this.tower = buildTower();
+    this.scene.add(this.tower);
+
+    // Trees and hay bales between the stations (positioned in layout())
+    this.props = [];
+    for (let i = 0; i < P.MAX_SEATS; i++) {
+      const tree = buildTree();
+      tree.scale.setScalar(0.9 + Math.random() * 0.3);
+      const hay = buildHay();
+      hay.rotation.y = Math.random() * 3;
+      this.scene.add(tree, hay);
+      this.props.push({ tree, hay });
+    }
+  }
+
+  drawBoard(n) {
+    const c = this.boardCanvas.getContext('2d');
     const cx = 512;
     const scale = 512 / BOARD_R;
     const g = c.createRadialGradient(cx, cx, 50, cx, cx, 512);
@@ -159,10 +190,23 @@ export class World {
     g.addColorStop(1, '#5fae45');
     c.fillStyle = g;
     c.fillRect(0, 0, 1024, 1024);
-    // grass speckles
+    // grass speckles (seeded so the board looks the same after a redraw)
+    let seed = 7;
+    const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
     for (let i = 0; i < 4000; i++) {
-      c.fillStyle = `rgba(${40 + Math.random() * 40},${110 + Math.random() * 60},30,${0.25 + Math.random() * 0.3})`;
-      c.fillRect(Math.random() * 1024, Math.random() * 1024, 2, 4);
+      c.fillStyle = `rgba(${40 + rnd() * 40},${110 + rnd() * 60},30,${0.25 + rnd() * 0.3})`;
+      c.fillRect(rnd() * 1024, rnd() * 1024, 2, 4);
+    }
+    // seat wedges
+    const half = Math.min(0.55, Math.PI / n - 0.08);
+    for (let i = 0; i < n; i++) {
+      const a = P.seatAngle(i, n);
+      c.fillStyle = SEAT_CSS[i] + '55';
+      c.beginPath();
+      c.moveTo(cx, cx);
+      c.arc(cx, cx, 505, a - half, a + half);
+      c.closePath();
+      c.fill();
     }
     // dirt flight path ring
     c.strokeStyle = 'rgba(170,120,70,0.55)';
@@ -177,17 +221,9 @@ export class World {
     c.arc(cx, cx, P.PLANE_LOW_R * scale, 0, Math.PI * 2);
     c.stroke();
     c.setLineDash([]);
-    // seat wedges
-    for (let i = 0; i < 4; i++) {
-      const a = P.seatAngle(i);
-      c.fillStyle = SEAT_CSS[i] + '55';
-      c.beginPath();
-      c.moveTo(cx, cx);
-      c.arc(cx, cx, 505, a - 0.55, a + 0.55);
-      c.closePath();
-      c.fill();
-      // hit zone arc
-      const pa = P.paddleAngle(i);
+    // hit zone arcs
+    for (let i = 0; i < n; i++) {
+      const pa = P.paddleAngle(i, n);
       c.strokeStyle = SEAT_CSS[i];
       c.lineWidth = 10;
       c.beginPath();
@@ -198,70 +234,21 @@ export class World {
     c.beginPath();
     c.arc(cx, cx, 1.35 * scale, 0, Math.PI * 2);
     c.fill();
-    const tex = new THREE.CanvasTexture(cv);
-    tex.colorSpace = THREE.SRGBColorSpace;
-    tex.anisotropy = 8;
-    const board = new THREE.Mesh(new THREE.CylinderGeometry(BOARD_R, BOARD_R + 0.05, 0.1, 96), mat(0x3d5a80));
-    board.position.y = -0.05;
-    board.receiveShadow = true;
-    this.scene.add(board);
-    // Circle UVs map canvas (x, y) directly onto world (x, z) after rotating flat
-    const top = new THREE.Mesh(new THREE.CircleGeometry(BOARD_R, 96), new THREE.MeshStandardMaterial({ map: tex, roughness: 0.9 }));
-    top.rotation.x = -Math.PI / 2;
-    top.position.y = 0.001;
-    top.receiveShadow = true;
-    this.scene.add(top);
-
-    this.tower = buildTower();
-    this.scene.add(this.tower);
-
-    // Props on the diagonals
-    for (let i = 0; i < 4; i++) {
-      const a = P.seatAngle(i) + Math.PI / 4;
-      const tree = buildTree();
-      tree.position.copy(polar(3.55, a + 0.08));
-      tree.scale.setScalar(0.9 + Math.random() * 0.3);
-      this.scene.add(tree);
-      const hay = buildHay();
-      hay.position.copy(polar(3.3, a - 0.2));
-      hay.rotation.y = Math.random() * 3;
-      this.scene.add(hay);
-    }
+    this.boardTex.needsUpdate = true;
   }
 
   buildStations() {
     this.stations = [];
-    for (let i = 0; i < P.NUM_SEATS; i++) {
+    for (let i = 0; i < P.MAX_SEATS; i++) {
       const color = SEAT_COLORS[i];
-      const a = P.seatAngle(i);
       const st = { seat: i };
-
-      const coop = buildCoop(color);
-      coop.position.copy(polar(3.5, a));
-      coop.rotation.y = -a;
-      this.scene.add(coop);
-      st.coop = coop;
-
-      const lever = buildLever(color);
-      const pa = P.paddleAngle(i);
-      lever.position.copy(polar(P.LEVER_PIVOT_R, pa));
-      lever.rotation.y = -pa;
-      this.scene.add(lever);
-      st.lever = lever;
-
-      const ca = P.chickenAngle(i);
-      const ramp = buildRamp(color);
-      ramp.position.copy(polar(P.CHICKEN_SLOT_R, ca));
-      ramp.rotation.y = -ca;
-      this.scene.add(ramp);
-      st.ramp = ramp;
-
-      st.slotPos = SLOT_POS.map(([dx, y]) => polar(P.CHICKEN_SLOT_R + dx, ca, y));
+      st.coop = buildCoop(color);
+      st.lever = buildLever(color);
+      st.ramp = buildRamp(color);
+      this.scene.add(st.coop, st.lever, st.ramp);
       st.chickens = [];
       for (let k = 0; k < P.START_CHICKENS; k++) {
         const ch = buildChicken(color);
-        ch.position.copy(st.slotPos[k]);
-        ch.rotation.y = faceCenterYaw(ca);
         ch.userData.mode = 'slot';
         ch.userData.slot = k;
         ch.userData.vel = new THREE.Vector3();
@@ -270,11 +257,49 @@ export class World {
         this.scene.add(ch);
         st.chickens.push(ch);
       }
-      st.count = P.START_CHICKENS;
+      st.count = 0;
+      st.queue = [];
       st.label = null;
       st.labelText = '';
       this.stations.push(st);
     }
+    this.layout(P.DEFAULT_SEATS);
+  }
+
+  // Arrange n stations evenly around the tower.
+  layout(n) {
+    this.n = n;
+    this.drawBoard(n);
+    for (let i = 0; i < P.MAX_SEATS; i++) {
+      const st = this.stations[i];
+      const used = i < n;
+      st.coop.visible = st.ramp.visible = used;
+      st.lever.visible = used && this.occupied[i];
+      if (st.label) st.label.visible = used;
+      if (!used) {
+        for (const ch of st.chickens) ch.visible = false;
+        continue;
+      }
+      const a = P.seatAngle(i, n);
+      st.coop.position.copy(polar(3.5, a));
+      st.coop.rotation.y = -a;
+      const pa = P.paddleAngle(i, n);
+      st.lever.position.copy(polar(P.LEVER_PIVOT_R, pa));
+      st.lever.rotation.y = -pa;
+      const ca = P.chickenAngle(i, n);
+      st.ramp.position.copy(polar(P.CHICKEN_SLOT_R, ca));
+      st.ramp.rotation.y = -ca;
+      st.slotPos = SLOT_POS.map(([dx, y]) => polar(P.CHICKEN_SLOT_R + dx, ca, y));
+      if (st.label) st.label.position.copy(polar(3.5, a, 1.25));
+    }
+    this.props.forEach((pr, i) => {
+      pr.tree.visible = pr.hay.visible = i < n;
+      const mid = P.seatAngle(i, n) + Math.PI / n;
+      pr.tree.position.copy(polar(3.55, mid + 0.08));
+      pr.hay.position.copy(polar(3.3, mid - Math.min(0.2, Math.PI / n - 0.3)));
+    });
+    this.roundId = -1; // rebuild chickens from the next state
+    if (this.mySeat >= 0) this.camTargetAngle = P.seatAngle(this.mySeat, n);
   }
 
   buildFlyer() {
@@ -441,8 +466,8 @@ export class World {
 
   setSeatInfo(players, mySeat) {
     this.mySeat = mySeat;
-    if (mySeat >= 0) this.camTargetAngle = P.seatAngle(mySeat);
-    for (let i = 0; i < P.NUM_SEATS; i++) {
+    if (mySeat >= 0) this.camTargetAngle = P.seatAngle(mySeat, this.n);
+    for (let i = 0; i < P.MAX_SEATS; i++) {
       const pl = players.find((p) => p.seat === i);
       const st = this.stations[i];
       const text = pl ? (i === mySeat ? `${pl.name} (du)` : pl.name) : '';
@@ -457,18 +482,19 @@ export class World {
         st.labelText = text;
         if (text) {
           st.label = makeLabel(text, SEAT_CSS[i]);
-          st.label.position.copy(polar(3.5, P.seatAngle(i), 1.25));
+          st.label.position.copy(polar(3.5, P.seatAngle(i, this.n), 1.25));
+          st.label.visible = i < this.n;
           this.scene.add(st.label);
         }
       }
-      st.lever.visible = !!pl;
+      st.lever.visible = !!pl && i < this.n;
     }
   }
 
   // ---------------------------------------------------------------- chickens
 
   resetChickens(state) {
-    for (let i = 0; i < P.NUM_SEATS; i++) {
+    for (let i = 0; i < this.n; i++) {
       const st = this.stations[i];
       const n = state.seats[i].chickens;
       st.count = n;
@@ -477,7 +503,7 @@ export class World {
         ch.userData.mode = 'slot';
         ch.userData.slot = k;
         ch.position.copy(st.slotPos[k]);
-        ch.rotation.set(0, faceCenterYaw(P.chickenAngle(i)), 0);
+        ch.rotation.set(0, faceCenterYaw(P.chickenAngle(i, this.n)), 0);
         ch.userData.body.rotation.set(0, 0, 0);
       });
       // order so that slot k holds chicken k
@@ -486,13 +512,14 @@ export class World {
   }
 
   syncChickens(state) {
+    if (state.n !== this.n) this.layout(state.n);
     if (state.roundId !== this.roundId) {
       this.roundId = state.roundId;
       this.resetChickens(state);
       return [];
     }
     const events = [];
-    for (let i = 0; i < P.NUM_SEATS; i++) {
+    for (let i = 0; i < this.n; i++) {
       const st = this.stations[i];
       const n = state.seats[i].chickens;
       if (n === st.count) continue;
@@ -500,7 +527,7 @@ export class World {
         // knock the front chicken(s)
         while (st.queue.length > n) {
           const ch = st.queue.shift();
-          const ca = P.chickenAngle(i);
+          const ca = P.chickenAngle(i, this.n);
           const tangent = new THREE.Vector3(-Math.sin(ca), 0, Math.cos(ca));
           const out = new THREE.Vector3(Math.cos(ca), 0, Math.sin(ca));
           ch.userData.mode = 'fly';
@@ -528,9 +555,9 @@ export class World {
 
   updateChickens(dt, state) {
     const t = this.time;
-    for (let i = 0; i < P.NUM_SEATS; i++) {
+    for (let i = 0; i < this.n; i++) {
       const st = this.stations[i];
-      const ca = P.chickenAngle(i);
+      const ca = P.chickenAngle(i, this.n);
       for (const ch of st.chickens) {
         const u = ch.userData;
         if (!ch.visible && u.mode === 'slot') continue;
@@ -637,7 +664,7 @@ export class World {
     this.blob.material.opacity = Math.max(0, 0.9 - hgt * 0.22);
 
     // Levers
-    for (let i = 0; i < P.NUM_SEATS; i++) {
+    for (let i = 0; i < this.n; i++) {
       const st = this.stations[i];
       const alpha = P.paddleAlpha(state.t + rem - state.seats[i].pressT);
       st.lever.userData.beam.rotation.z = -alpha;
@@ -677,7 +704,7 @@ export class World {
 
   // Screen position of a seat's coop (for HUD popups)
   seatScreenPos(seat) {
-    const p = polar(3.3, P.seatAngle(seat), 0.9).project(this.camera);
+    const p = polar(3.3, P.seatAngle(seat, this.n), 0.9).project(this.camera);
     return { x: (p.x * 0.5 + 0.5) * window.innerWidth, y: (-p.y * 0.5 + 0.5) * window.innerHeight };
   }
 

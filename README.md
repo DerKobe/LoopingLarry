@@ -11,9 +11,17 @@ npm install
 npm start
 ```
 
-Dann <http://localhost:3000> öffnen, Namen eingeben, **Losfliegen** klicken und den
-Einladungslink (🔗 oben links) an Freunde schicken. Bis zu 4 Spieler pro Raum; freie Plätze
-kann der Host mit Bots füllen.
+Dann <http://localhost:3000> öffnen, Namen eingeben und **Losfliegen** klicken. Es gibt genau
+einen Hof: Alle, die die Seite öffnen, spielen zusammen.
+
+## Spielerzahl
+
+Vor jeder Runde wählt der Host (wer zuerst da war) im Lobby-Fenster **2, 3, 4 oder 5 Spieler**.
+Der Hof ordnet die Stationen dann gleichmäßig um den Turm an.
+
+- Die Runde startet erst, wenn alle Plätze besetzt sind. Freie Plätze kann der Host mit Bots füllen.
+- Sind mehr Leute da als Plätze, schauen die übrigen zu (mit Video und Ton) und rücken nach, sobald ein Platz frei wird.
+- Wer mitten in einer Runde dazukommt, spielt ab der nächsten Runde mit.
 
 ## Spielablauf
 

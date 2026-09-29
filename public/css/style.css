@@ -204,10 +204,6 @@ kbd {
 #join-form input:focus {
   border-color: var(--accent2);
 }
-#in-room {
-  text-transform: uppercase;
-  letter-spacing: 3px;
-}
 
 .small {
   font-size: 14px;
@@ -267,6 +263,18 @@ kbd {
   width: var(--tile-top);
   transform: translateX(-50%);
 }
+.tile.pos-topleft,
+.tile.pos-topright {
+  top: 10px;
+  width: var(--tile-top);
+  transform: translateX(-50%);
+}
+.tile.pos-topleft {
+  left: 31%;
+}
+.tile.pos-topright {
+  left: 69%;
+}
 .tile.pos-self {
   left: 16px;
   bottom: 16px;
@@ -325,6 +333,11 @@ kbd {
 }
 .tile.pos-self .hens {
   font-size: 16px;
+}
+.tile .hens small {
+  letter-spacing: normal;
+  font-size: 14px;
+  opacity: 0.85;
 }
 .tile .hens .lost {
   filter: grayscale(1) opacity(0.35);
@@ -436,6 +449,32 @@ kbd {
   }
 }
 
+#spectators {
+  position: fixed;
+  left: 16px;
+  top: 44px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  z-index: 5;
+}
+.tile.pos-spec {
+  position: relative;
+  width: clamp(130px, 10vw, 190px);
+  border-width: 3px;
+  border-radius: 14px;
+}
+.tile.pos-spec .nameplate {
+  font-size: 13px;
+  padding: 10px 8px 4px;
+}
+.tile.pos-spec .avatar {
+  font-size: 40px;
+}
+.tile.pos-spec .badges {
+  font-size: 12px;
+}
+
 /* ------------------------------------------------------------ top bar & panels */
 
 #topbar {
@@ -446,29 +485,6 @@ kbd {
   flex-direction: column;
   gap: 6px;
   z-index: 6;
-}
-.room-chip {
-  background: rgba(255, 255, 255, 0.92);
-  border-radius: 14px;
-  padding: 6px 8px 6px 14px;
-  font-size: 17px;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.15);
-}
-.room-chip b {
-  letter-spacing: 2px;
-}
-.chip-btn {
-  font-family: inherit;
-  font-weight: 700;
-  border: none;
-  background: var(--accent2);
-  color: var(--ink);
-  border-radius: 10px;
-  padding: 4px 10px;
-  cursor: pointer;
 }
 .net-info {
   font-size: 13px;
@@ -493,6 +509,49 @@ kbd {
   margin: 0 0 8px;
   font-size: 24px;
   text-align: center;
+}
+.seat-count-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin-bottom: 10px;
+  font-weight: 700;
+  font-size: 18px;
+}
+.segmented {
+  display: flex;
+  background: #edf2f4;
+  border-radius: 12px;
+  padding: 3px;
+  gap: 3px;
+}
+.segmented button {
+  font-family: inherit;
+  font-weight: 800;
+  font-size: 18px;
+  width: 44px;
+  height: 36px;
+  border: none;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--ink);
+  cursor: pointer;
+}
+.segmented button.active {
+  background: var(--accent);
+  color: #fff;
+  box-shadow: 0 2px 0 rgba(0, 0, 0, 0.2);
+}
+.segmented button:disabled {
+  cursor: default;
+}
+.segmented button:disabled:not(.active) {
+  opacity: 0.45;
+}
+#lobby-spectators {
+  text-align: center;
+  margin: -4px 0 10px;
 }
 #lobby-players {
   list-style: none;
