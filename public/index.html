@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Looping Larry</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🐔</text></svg>" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;700;800&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="/css/style.css" />
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "/vendor/three/build/three.module.js",
+          "three/addons/": "/vendor/three/examples/jsm/"
+        }
+      }
+    </script>
+  </head>
+  <body>
+    <canvas id="game"></canvas>
+
+    <!-- Join screen -->
+    <div id="join" class="screen">
+      <div class="join-card">
+        <h1 class="logo"><span>Looping</span> <span>Larry</span></h1>
+        <p class="tagline">Schütze deine Hühner vor dem wildesten Piloten der Welt!</p>
+        <div class="join-grid">
+          <div class="preview">
+            <video id="preview" autoplay playsinline muted></video>
+            <div id="preview-empty" class="preview-empty">
+              <div>📷</div>
+              <button id="btn-media" class="btn secondary">Kamera &amp; Mikro aktivieren</button>
+              <small>Damit deine Gegner dein Gesicht sehen, wenn Larry zuschlägt.</small>
+            </div>
+          </div>
+          <form id="join-form" autocomplete="off">
+            <label>Dein Name
+              <input id="in-name" maxlength="16" placeholder="z.B. Anna" required />
+            </label>
+            <label>Raumcode
+              <input id="in-room" maxlength="8" placeholder="z.B. HUHN42" />
+            </label>
+            <button type="submit" class="btn primary big" id="btn-join">Losfliegen ✈️</button>
+            <p class="small">Ohne Code wird ein neuer Raum erstellt. Teile danach einfach den Link.</p>
+            <p id="join-error" class="error"></p>
+          </form>
+        </div>
+        <div class="howto">
+          <b>So geht's:</b> Larry kreist über dem Hof. Kommt er an deinem Hebel vorbei, drück
+          <kbd>Leertaste</kbd> oder klick – im richtigen Moment! Perfektes Timing schickt ihn in einen Looping.
+          Verlierst du alle 3 Hühner, bist du raus. Die letzte Farm mit Huhn gewinnt.
+        </div>
+      </div>
+    </div>
+
+    <!-- In-game HUD -->
+    <div id="hud" class="hidden">
+      <div id="tiles"></div>
+
+      <div id="topbar">
+        <div class="room-chip">Raum <b id="room-code">----</b>
+          <button id="btn-copy" class="chip-btn" title="Einladungslink kopieren">🔗 Link kopieren</button>
+        </div>
+        <div id="net-info" class="net-info"></div>
+      </div>
+
+      <div id="lobby-panel" class="panel">
+        <h2 id="lobby-title">Warte auf Spieler …</h2>
+        <ul id="lobby-players"></ul>
+        <div class="lobby-actions">
+          <button id="btn-bot" class="btn secondary">🤖 Bot hinzufügen</button>
+          <button id="btn-start" class="btn primary">Runde starten</button>
+        </div>
+        <p id="lobby-hint" class="small"></p>
+      </div>
+
+      <div id="center-msg"></div>
+      <div id="popups"></div>
+
+      <div id="winner" class="hidden">
+        <div class="winner-card">
+          <div class="trophy">🏆</div>
+          <div id="winner-text"></div>
+          <div id="winner-sub" class="small"></div>
+        </div>
+      </div>
+
+      <div id="controls">
+        <div class="hint"><kbd>Leertaste</kbd> / Klick = Hebel &nbsp;·&nbsp; <kbd>1</kbd>–<kbd>4</kbd> Emotes</div>
+        <button id="btn-mic" class="ctrl" title="Mikrofon (M)">🎙️</button>
+        <button id="btn-cam" class="ctrl" title="Kamera (V)">📹</button>
+        <label class="ctrl vol" title="Lautstärke Effekte">🔊<input id="in-vol" type="range" min="0" max="1" step="0.05" value="0.6" /></label>
+        <button id="btn-leave" class="ctrl" title="Verlassen">🚪</button>
+      </div>
+    </div>
+
+    <div id="toast"></div>
+    <script type="module" src="/js/main.js"></script>
+  </body>
+</html>
