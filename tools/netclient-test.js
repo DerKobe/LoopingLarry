@@ -52,7 +52,7 @@ ws.on('message', (raw) => {
         if (k !== lastHitKey) {
           lastHitKey = k;
           hits++;
-          console.log(`  hit q=${latest.lastHit.q.toFixed(2)} kind=${latest.lastHit.kind}`);
+          console.log(`  hit q=${latest.lastHit.q.toFixed(2)} power=${latest.lastHit.power} kind=${latest.lastHit.kind}`);
         }
       }
     } else if (m.t === 'roundEnd') {
@@ -71,7 +71,7 @@ const timer = setInterval(() => {
   const h = P.planePose(s).h;
   if (prevD !== null && prevD < -0.04 && d >= -0.04 && h < 0.6) {
     presses++;
-    send({ t: 'flip', st: t });
+    send({ t: 'flip', st: t, power: 0.6 });
   }
   prevD = d;
 }, 2);

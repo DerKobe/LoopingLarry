@@ -652,6 +652,45 @@ kbd {
   }
 }
 
+#charge-meter {
+  position: fixed;
+  z-index: 9;
+  width: 78px;
+  height: 78px;
+  margin: -39px 0 0 -39px;
+  border-radius: 50%;
+  pointer-events: none;
+  background: conic-gradient(hsl(var(--hue, 120) 85% 50%) calc(var(--p, 0) * 1%), rgba(255, 255, 255, 0.35) 0);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+#charge-meter::before {
+  content: '';
+  position: absolute;
+  inset: 9px;
+  border-radius: 50%;
+  background: rgba(29, 36, 51, 0.85);
+}
+#charge-meter span {
+  position: relative;
+  color: #fff;
+  font-weight: 800;
+  font-size: 18px;
+}
+#charge-meter.full {
+  animation: meterPulse 0.25s ease-in-out infinite alternate;
+}
+@keyframes meterPulse {
+  from {
+    transform: scale(1);
+  }
+  to {
+    transform: scale(1.12);
+  }
+}
+
 #popups {
   position: fixed;
   inset: 0;

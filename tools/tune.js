@@ -39,6 +39,16 @@ for (const f of [1, 1.3, 1.6]) {
   for (let k = 1.5; k <= 8.01; k += 0.25) console.log(flight(k, f));
 }
 
+// Charge power -> kick -> landing distance
+console.log('--- charge power (q = timing quality)');
+for (const q of [0.3, 0.8]) {
+  for (const pw of [0, 0.25, 0.5, 0.75, 1]) {
+    const k = P.kickFor(pw, q, 0);
+    const f = flight(k);
+    console.log(`power ${pw.toFixed(2)} q ${q}: kick ${k.toFixed(2)} maxH ${f.maxH} lands after ${f.stations} stations${f.loops ? ' (LOOPING)' : ''}`);
+  }
+}
+
 // Release from upright
 const s = P.createState(0);
 s.phase = 'countdown';
