@@ -1,0 +1,22 @@
+{
+  "name": "looping-larry",
+  "description": "Multiplayer-Browserspiel nach dem Vorbild von Looping Louie – mit Voice- und Videochat",
+  "healthchecks": {
+    "web": [
+      {
+        "type": "startup",
+        "name": "web check",
+        "description": "Checks that the server answers on /health",
+        "path": "/health",
+        "attempts": 5,
+        "wait": 2,
+        "timeout": 5
+      }
+    ]
+  },
+  "formation": {
+    "web": {
+      "quantity": 1
+    }
+  }
+}

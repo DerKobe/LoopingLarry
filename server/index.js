@@ -127,3 +127,14 @@ server.listen(PORT, () => {
   const proto = server instanceof https.Server ? 'https' : 'http';
   console.log(`Looping Larry läuft auf ${proto}://localhost:${PORT}`);
 });
+
+// Graceful shutdown (Docker/Dokku send SIGTERM when replacing the container)
+function shutdown(signal) {
+  console.log(`${signal} erhalten – fahre herunter …`);
+  for (const ws of wss.clients) ws.close(1012, 'Server-Neustart');
+  for (const room of rooms.values()) room.destroy();
+  server.close(() => process.exit(0));
+  setTimeout(() => process.exit(0), 3000).unref();
+}
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));

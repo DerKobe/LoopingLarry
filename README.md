@@ -75,7 +75,40 @@ Für Spieler hinter strikten NATs wird ggf. ein TURN-Server benötigt:
 ICE_SERVERS='[{"urls":"stun:stun.l.google.com:19302"},{"urls":"turn:turn.example.com:3478","username":"u","credential":"p"}]' npm start
 ```
 
-Weitere Umgebungsvariablen: `PORT` (Standard 3000).
+Weitere Umgebungsvariablen: `PORT` (Standard 3000, im Docker-Image 5000).
+
+## Deployment mit Dokku
+
+Das Repo enthält ein `Dockerfile`; Dokku baut damit automatisch. Auf dem Server:
+
+```bash
+dokku apps:create looping-larry
+dokku domains:set looping-larry larry.example.com
+dokku ports:set looping-larry http:80:5000
+# HTTPS ist Pflicht für Kamera/Mikro:
+dokku letsencrypt:set looping-larry email du@example.com
+dokku letsencrypt:enable looping-larry
+# Optional: eigener TURN-Server
+dokku config:set looping-larry ICE_SERVERS='[{"urls":"stun:stun.l.google.com:19302"}]'
+```
+
+Lokal:
+
+```bash
+git init && git add . && git commit -m "Looping Larry"
+git remote add dokku dokku@dein-server:looping-larry
+git push dokku main
+```
+
+Hinweise:
+
+- **Genau eine Instanz:** Räume und Spielzustand liegen im Speicher des Prozesses. Nicht auf mehrere
+  Container skalieren (`app.json` setzt `web=1`).
+- WebSockets laufen über `/ws`; Dokkus nginx leitet Upgrades standardmäßig weiter.
+- Bei einem Redeploy werden laufende Runden beendet; die Clients laden automatisch neu.
+- Healthcheck: `GET /health` (in `app.json` und im Docker-`HEALTHCHECK`).
+
+Lokal testen: `docker build -t looping-larry . && docker run --rm -p 3000:5000 looping-larry`
 
 ## Entwicklung
 
